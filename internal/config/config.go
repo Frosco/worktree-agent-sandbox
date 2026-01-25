@@ -54,3 +54,29 @@ func MergeConfigs(global, repo *Config) *Config {
 
 	return merged
 }
+
+// Paths holds default file/directory paths
+type Paths struct {
+	GlobalConfig string
+	WorktreeBase string
+}
+
+// DefaultPaths returns XDG-compliant default paths
+func DefaultPaths() Paths {
+	home := os.Getenv("HOME")
+
+	configHome := os.Getenv("XDG_CONFIG_HOME")
+	if configHome == "" {
+		configHome = filepath.Join(home, ".config")
+	}
+
+	dataHome := os.Getenv("XDG_DATA_HOME")
+	if dataHome == "" {
+		dataHome = filepath.Join(home, ".local", "share")
+	}
+
+	return Paths{
+		GlobalConfig: filepath.Join(configHome, "wt", "config.toml"),
+		WorktreeBase: filepath.Join(dataHome, "wt", "worktrees"),
+	}
+}

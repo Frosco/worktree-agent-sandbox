@@ -124,3 +124,59 @@ func TestMergeConfigsWithNil(t *testing.T) {
 		t.Errorf("expected 1 file, got %d", len(merged.CopyFiles))
 	}
 }
+
+func TestDefaultPaths(t *testing.T) {
+	// Override HOME for test
+	origHome := os.Getenv("HOME")
+	origConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	origDataHome := os.Getenv("XDG_DATA_HOME")
+
+	os.Setenv("HOME", "/home/testuser")
+	os.Unsetenv("XDG_CONFIG_HOME")
+	os.Unsetenv("XDG_DATA_HOME")
+	defer func() {
+		os.Setenv("HOME", origHome)
+		if origConfigHome != "" {
+			os.Setenv("XDG_CONFIG_HOME", origConfigHome)
+		}
+		if origDataHome != "" {
+			os.Setenv("XDG_DATA_HOME", origDataHome)
+		}
+	}()
+
+	paths := DefaultPaths()
+
+	expectedConfig := "/home/testuser/.config/wt/config.toml"
+	if paths.GlobalConfig != expectedConfig {
+		t.Errorf("GlobalConfig: expected %s, got %s", expectedConfig, paths.GlobalConfig)
+	}
+
+	expectedWorktrees := "/home/testuser/.local/share/wt/worktrees"
+	if paths.WorktreeBase != expectedWorktrees {
+		t.Errorf("WorktreeBase: expected %s, got %s", expectedWorktrees, paths.WorktreeBase)
+	}
+}
+
+func TestDefaultPathsWithXDG(t *testing.T) {
+	origHome := os.Getenv("HOME")
+	origConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	origDataHome := os.Getenv("XDG_DATA_HOME")
+
+	os.Setenv("HOME", "/home/testuser")
+	os.Setenv("XDG_CONFIG_HOME", "/custom/config")
+	os.Setenv("XDG_DATA_HOME", "/custom/data")
+	defer func() {
+		os.Setenv("HOME", origHome)
+		os.Setenv("XDG_CONFIG_HOME", origConfigHome)
+		os.Setenv("XDG_DATA_HOME", origDataHome)
+	}()
+
+	paths := DefaultPaths()
+
+	if paths.GlobalConfig != "/custom/config/wt/config.toml" {
+		t.Errorf("GlobalConfig with XDG: expected /custom/config/wt/config.toml, got %s", paths.GlobalConfig)
+	}
+	if paths.WorktreeBase != "/custom/data/wt/worktrees" {
+		t.Errorf("WorktreeBase with XDG: expected /custom/data/wt/worktrees, got %s", paths.WorktreeBase)
+	}
+}
