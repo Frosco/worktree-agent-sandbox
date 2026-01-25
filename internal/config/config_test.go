@@ -62,3 +62,65 @@ func TestLoadGlobalConfigInvalidTOML(t *testing.T) {
 		t.Error("expected error for invalid TOML")
 	}
 }
+
+func TestLoadRepoConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, ".wt.toml")
+	configContent := `
+copy_files = ["mise.local.toml"]
+extra_mounts = ["~/project-data"]
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadRepoConfig(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadRepoConfig failed: %v", err)
+	}
+
+	if len(cfg.CopyFiles) != 1 || cfg.CopyFiles[0] != "mise.local.toml" {
+		t.Errorf("unexpected copy_files: %v", cfg.CopyFiles)
+	}
+}
+
+func TestMergeConfigs(t *testing.T) {
+	global := &Config{
+		CopyFiles:   []string{"CLAUDE.md", ".envrc"},
+		ExtraMounts: []string{"~/shared"},
+	}
+	repo := &Config{
+		CopyFiles:   []string{"mise.local.toml"},
+		ExtraMounts: []string{"~/project"},
+	}
+
+	merged := MergeConfigs(global, repo)
+
+	expectedFiles := []string{"CLAUDE.md", ".envrc", "mise.local.toml"}
+	if len(merged.CopyFiles) != 3 {
+		t.Errorf("expected 3 copy_files, got %d: %v", len(merged.CopyFiles), merged.CopyFiles)
+	}
+	for i, f := range expectedFiles {
+		if merged.CopyFiles[i] != f {
+			t.Errorf("copy_files[%d]: expected %s, got %s", i, f, merged.CopyFiles[i])
+		}
+	}
+
+	if len(merged.ExtraMounts) != 2 {
+		t.Errorf("expected 2 extra_mounts, got %d", len(merged.ExtraMounts))
+	}
+}
+
+func TestMergeConfigsWithNil(t *testing.T) {
+	repo := &Config{CopyFiles: []string{"file.txt"}}
+
+	merged := MergeConfigs(nil, repo)
+	if len(merged.CopyFiles) != 1 {
+		t.Errorf("expected 1 file, got %d", len(merged.CopyFiles))
+	}
+
+	merged = MergeConfigs(repo, nil)
+	if len(merged.CopyFiles) != 1 {
+		t.Errorf("expected 1 file, got %d", len(merged.CopyFiles))
+	}
+}
