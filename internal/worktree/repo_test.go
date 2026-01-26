@@ -243,3 +243,64 @@ func TestRemoveWorktree(t *testing.T) {
 		t.Error("worktree directory still exists")
 	}
 }
+
+func TestCopyConfigFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoDir := filepath.Join(tmpDir, "myrepo")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create source files in repo
+	if err := os.WriteFile(filepath.Join(repoDir, "CLAUDE.md"), []byte("# Claude"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "mise.local.toml"), []byte("[tools]"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "commit", "--allow-empty", "-m", "initial"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	wt := &Manager{
+		RepoRoot:     repoDir,
+		RepoName:     "myrepo",
+		WorktreeBase: worktreeBase,
+	}
+
+	wtPath, _ := wt.Create("feature-x")
+
+	// Copy files
+	filesToCopy := []string{"CLAUDE.md", "mise.local.toml", "nonexistent.txt"}
+	copied, err := wt.CopyFiles(wtPath, filesToCopy)
+	if err != nil {
+		t.Fatalf("CopyFiles failed: %v", err)
+	}
+
+	// Should copy 2 files (skip nonexistent)
+	if len(copied) != 2 {
+		t.Errorf("expected 2 copied files, got %d", len(copied))
+	}
+
+	// Verify files exist in worktree
+	content, err := os.ReadFile(filepath.Join(wtPath, "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("CLAUDE.md not copied: %v", err)
+	}
+	if string(content) != "# Claude" {
+		t.Errorf("content mismatch: %s", content)
+	}
+}

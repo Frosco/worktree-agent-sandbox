@@ -3,6 +3,7 @@ package worktree
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -121,4 +122,58 @@ func (m *Manager) Remove(branch string) error {
 	}
 
 	return nil
+}
+
+// CopyFiles copies files from repo root to worktree.
+// Skips files that don't exist in the source.
+// Returns list of files that were copied.
+func (m *Manager) CopyFiles(wtPath string, files []string) ([]string, error) {
+	var copied []string
+
+	for _, file := range files {
+		srcPath := filepath.Join(m.RepoRoot, file)
+		dstPath := filepath.Join(wtPath, file)
+
+		// Skip if source doesn't exist
+		if _, err := os.Stat(srcPath); os.IsNotExist(err) {
+			continue
+		}
+
+		// Ensure destination directory exists
+		if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+			return copied, err
+		}
+
+		if err := copyFile(srcPath, dstPath); err != nil {
+			return copied, err
+		}
+
+		copied = append(copied, file)
+	}
+
+	return copied, nil
+}
+
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	srcInfo, err := srcFile.Stat()
+	if err != nil {
+		return err
+	}
+
+	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	if _, err = io.Copy(dstFile, srcFile); err != nil {
+		return err
+	}
+	return dstFile.Close()
 }
