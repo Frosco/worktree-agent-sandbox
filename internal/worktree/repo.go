@@ -38,3 +38,14 @@ func FindRepoRoot(dir string) (string, error) {
 func GetRepoName(repoRoot string) string {
 	return filepath.Base(repoRoot)
 }
+
+// GetMainBranch returns the branch currently checked out in the main repo.
+func GetMainBranch(repoRoot string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = repoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}

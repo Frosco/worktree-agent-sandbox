@@ -45,6 +45,17 @@ var switchCmd = &cobra.Command{
 
 		mgr := worktree.NewManager(repoRoot, worktreeBase)
 
+		// If switching to the branch currently checked out in main repo, return main repo path
+		mainBranch, err := worktree.GetMainBranch(repoRoot)
+		if err == nil && branch == mainBranch {
+			if switchPrintPath {
+				fmt.Fprintln(cmd.OutOrStdout(), repoRoot)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Switched to %s\n", repoRoot)
+			}
+			return nil
+		}
+
 		// If worktree exists, just return its path
 		if mgr.Exists(branch) {
 			wtPath := mgr.WorktreePath(branch)

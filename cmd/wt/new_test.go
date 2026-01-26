@@ -138,6 +138,45 @@ func TestSwitchCommand(t *testing.T) {
 	}
 }
 
+func TestSwitchToMainBranch(t *testing.T) {
+	repoDir, worktreeBase := setupTestRepo(t)
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	buf := new(bytes.Buffer)
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	// Get the main branch name (could be "main" or "master")
+	mainBranch, err := worktree.GetMainBranch(repoDir)
+	if err != nil {
+		t.Fatalf("GetMainBranch failed: %v", err)
+	}
+
+	// Switch to main branch should return the main repo path, not create a worktree
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"switch", mainBranch,
+		"--worktree-base", worktreeBase,
+		"--print-path",
+	})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("switch to main failed: %v\n%s", err, buf.String())
+	}
+
+	// Should return the main repo path, not a worktree path
+	output := strings.TrimSpace(buf.String())
+	if output != repoDir {
+		t.Errorf("switch to main: expected main repo %s, got %s", repoDir, output)
+	}
+}
+
 func TestListCommand(t *testing.T) {
 	repoDir, worktreeBase := setupTestRepo(t)
 

@@ -108,6 +108,39 @@ func TestGetRepoName(t *testing.T) {
 	}
 }
 
+func TestGetMainBranch(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoDir := filepath.Join(tmpDir, "myrepo")
+
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "commit", "--allow-empty", "-m", "initial"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	branch, err := GetMainBranch(repoDir)
+	if err != nil {
+		t.Fatalf("GetMainBranch failed: %v", err)
+	}
+
+	// Default branch after git init is usually "master" or "main"
+	if branch != "master" && branch != "main" {
+		t.Errorf("expected master or main, got %s", branch)
+	}
+}
+
 func TestCreateWorktree(t *testing.T) {
 	// Create a temp git repo with initial commit
 	tmpDir := t.TempDir()
