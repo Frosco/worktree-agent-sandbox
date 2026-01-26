@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/niref/wt/internal/worktree"
 )
 
 func setupTestRepo(t *testing.T) (repoDir, worktreeBase string) {
@@ -133,5 +135,38 @@ func TestSwitchCommand(t *testing.T) {
 
 	if strings.TrimSpace(buf.String()) != expectedPath {
 		t.Errorf("second switch: expected %s, got %s", expectedPath, buf.String())
+	}
+}
+
+func TestListCommand(t *testing.T) {
+	repoDir, worktreeBase := setupTestRepo(t)
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	// Create some worktrees first
+	mgr := worktree.NewManager(repoDir, worktreeBase)
+	mgr.Create("feature-a")
+	mgr.Create("feature-b")
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetArgs([]string{"list", "--worktree-base", worktreeBase})
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "feature-a") {
+		t.Error("output should contain feature-a")
+	}
+	if !strings.Contains(output, "feature-b") {
+		t.Error("output should contain feature-b")
 	}
 }
