@@ -158,3 +158,88 @@ func TestCreateWorktreeAlreadyExists(t *testing.T) {
 		t.Errorf("expected ErrWorktreeExists, got %v", err)
 	}
 }
+
+func TestListWorktrees(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoDir := filepath.Join(tmpDir, "myrepo")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "commit", "--allow-empty", "-m", "initial"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	wt := &Manager{
+		RepoRoot:     repoDir,
+		RepoName:     "myrepo",
+		WorktreeBase: worktreeBase,
+	}
+
+	// Create two worktrees
+	wt.Create("feature-a")
+	wt.Create("feature-b")
+
+	list, err := wt.List()
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+
+	// Should have 2 worktrees (not counting main)
+	if len(list) != 2 {
+		t.Errorf("expected 2 worktrees, got %d: %v", len(list), list)
+	}
+}
+
+func TestRemoveWorktree(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoDir := filepath.Join(tmpDir, "myrepo")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "commit", "--allow-empty", "-m", "initial"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	wt := &Manager{
+		RepoRoot:     repoDir,
+		RepoName:     "myrepo",
+		WorktreeBase: worktreeBase,
+	}
+
+	// Create and remove
+	wtPath, _ := wt.Create("feature-x")
+	if err := wt.Remove("feature-x"); err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+
+	// Verify it's gone
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Error("worktree directory still exists")
+	}
+}

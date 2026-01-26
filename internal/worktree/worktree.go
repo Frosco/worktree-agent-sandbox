@@ -10,6 +10,7 @@ import (
 )
 
 var ErrWorktreeExists = errors.New("worktree already exists")
+var ErrWorktreeNotFound = errors.New("worktree does not exist")
 
 // Manager handles worktree operations for a repository
 type Manager struct {
@@ -71,4 +72,53 @@ func (m *Manager) Create(branch string) (string, error) {
 	}
 
 	return wtPath, nil
+}
+
+// WorktreeInfo holds information about a worktree
+type WorktreeInfo struct {
+	Path   string
+	Branch string
+}
+
+// List returns all worktrees managed by wt for this repo
+func (m *Manager) List() ([]WorktreeInfo, error) {
+	repoWorktreeDir := filepath.Join(m.WorktreeBase, m.RepoName)
+
+	entries, err := os.ReadDir(repoWorktreeDir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var worktrees []WorktreeInfo
+	for _, entry := range entries {
+		if entry.IsDir() {
+			wtPath := filepath.Join(repoWorktreeDir, entry.Name())
+			worktrees = append(worktrees, WorktreeInfo{
+				Path:   wtPath,
+				Branch: entry.Name(),
+			})
+		}
+	}
+
+	return worktrees, nil
+}
+
+// Remove removes a worktree by branch name
+func (m *Manager) Remove(branch string) error {
+	wtPath := m.WorktreePath(branch)
+
+	if !m.Exists(branch) {
+		return ErrWorktreeNotFound
+	}
+
+	cmd := exec.Command("git", "worktree", "remove", wtPath)
+	cmd.Dir = m.RepoRoot
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git worktree remove: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+
+	return nil
 }
