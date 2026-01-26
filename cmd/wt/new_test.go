@@ -170,3 +170,37 @@ func TestListCommand(t *testing.T) {
 		t.Error("output should contain feature-b")
 	}
 }
+
+func TestRemoveCommand(t *testing.T) {
+	repoDir, worktreeBase := setupTestRepo(t)
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	// Create a worktree
+	mgr := worktree.NewManager(repoDir, worktreeBase)
+	wtPath, _ := mgr.Create("feature-remove")
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"remove", "feature-remove",
+		"--worktree-base", worktreeBase,
+		"--force", // Skip change detection prompt
+	})
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("remove failed: %v", err)
+	}
+
+	// Verify worktree is gone
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Error("worktree should be removed")
+	}
+}
