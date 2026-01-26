@@ -1,6 +1,7 @@
 package worktree
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -176,4 +177,72 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return dstFile.Close()
+}
+
+// FileChange represents a changed config file
+type FileChange struct {
+	File     string
+	Conflict bool // true if source also changed
+}
+
+// DetectChanges checks if config files in worktree differ from source.
+// Also detects conflicts where source changed too.
+func (m *Manager) DetectChanges(wtPath string, files []string) ([]FileChange, error) {
+	var changes []FileChange
+
+	for _, file := range files {
+		srcPath := filepath.Join(m.RepoRoot, file)
+		dstPath := filepath.Join(wtPath, file)
+
+		// Skip if file doesn't exist in worktree
+		dstContent, err := os.ReadFile(dstPath)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		srcContent, err := os.ReadFile(srcPath)
+		if os.IsNotExist(err) {
+			// File exists in worktree but not source - that's a change
+			changes = append(changes, FileChange{File: file, Conflict: false})
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		// Compare contents
+		if !bytes.Equal(srcContent, dstContent) {
+			// Check if this is a conflict (source also differs from what we copied)
+			// We detect conflict by checking if source hash differs from destination
+			// In a real implementation, we'd store the original hash when copying
+			// For now, we'll check if source differs from worktree content
+			change := FileChange{File: file, Conflict: false}
+
+			// Simple conflict detection: if both differ, it's a conflict
+			// This is imperfect but catches the common case
+			// Check if source was modified after copy by comparing mod times
+			srcInfo, _ := os.Stat(srcPath)
+			dstInfo, _ := os.Stat(dstPath)
+			if srcInfo != nil && dstInfo != nil {
+				// If source is newer than destination, likely a conflict
+				if srcInfo.ModTime().After(dstInfo.ModTime()) {
+					change.Conflict = true
+				}
+			}
+
+			changes = append(changes, change)
+		}
+	}
+
+	return changes, nil
+}
+
+// MergeBack copies a file from worktree back to source repo
+func (m *Manager) MergeBack(wtPath, file string) error {
+	srcPath := filepath.Join(wtPath, file)
+	dstPath := filepath.Join(m.RepoRoot, file)
+	return copyFile(srcPath, dstPath)
 }

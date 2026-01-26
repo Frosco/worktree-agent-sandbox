@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestFindRepoRoot(t *testing.T) {
@@ -302,5 +303,174 @@ func TestCopyConfigFiles(t *testing.T) {
 	}
 	if string(content) != "# Claude" {
 		t.Errorf("content mismatch: %s", content)
+	}
+}
+
+func TestDetectConfigChanges(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoDir := filepath.Join(tmpDir, "myrepo")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create source files
+	if err := os.WriteFile(filepath.Join(repoDir, "CLAUDE.md"), []byte("original"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "unchanged.txt"), []byte("same"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "commit", "--allow-empty", "-m", "initial"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	wt := &Manager{
+		RepoRoot:     repoDir,
+		RepoName:     "myrepo",
+		WorktreeBase: worktreeBase,
+	}
+
+	wtPath, _ := wt.Create("feature-x")
+	wt.CopyFiles(wtPath, []string{"CLAUDE.md", "unchanged.txt"})
+
+	// Modify one file in worktree
+	if err := os.WriteFile(filepath.Join(wtPath, "CLAUDE.md"), []byte("modified in worktree"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	changes, err := wt.DetectChanges(wtPath, []string{"CLAUDE.md", "unchanged.txt"})
+	if err != nil {
+		t.Fatalf("DetectChanges failed: %v", err)
+	}
+
+	if len(changes) != 1 {
+		t.Errorf("expected 1 changed file, got %d", len(changes))
+	}
+	if len(changes) > 0 && changes[0].File != "CLAUDE.md" {
+		t.Errorf("expected CLAUDE.md changed, got %s", changes[0].File)
+	}
+}
+
+func TestDetectConflict(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoDir := filepath.Join(tmpDir, "myrepo")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(repoDir, "CLAUDE.md"), []byte("original"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "commit", "--allow-empty", "-m", "initial"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	wt := &Manager{
+		RepoRoot:     repoDir,
+		RepoName:     "myrepo",
+		WorktreeBase: worktreeBase,
+	}
+
+	wtPath, _ := wt.Create("feature-x")
+	wt.CopyFiles(wtPath, []string{"CLAUDE.md"})
+
+	// Modify in both places - add small delay to ensure distinct timestamps
+	if err := os.WriteFile(filepath.Join(wtPath, "CLAUDE.md"), []byte("modified in worktree"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(10 * time.Millisecond) // ensure source has later modtime
+	if err := os.WriteFile(filepath.Join(repoDir, "CLAUDE.md"), []byte("modified in main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	changes, _ := wt.DetectChanges(wtPath, []string{"CLAUDE.md"})
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %d", len(changes))
+	}
+	if !changes[0].Conflict {
+		t.Error("expected conflict=true")
+	}
+}
+
+func TestMergeBack(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoDir := filepath.Join(tmpDir, "myrepo")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create source file
+	if err := os.WriteFile(filepath.Join(repoDir, "CLAUDE.md"), []byte("original"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "commit", "--allow-empty", "-m", "initial"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	wt := &Manager{
+		RepoRoot:     repoDir,
+		RepoName:     "myrepo",
+		WorktreeBase: worktreeBase,
+	}
+
+	wtPath, _ := wt.Create("feature-x")
+	wt.CopyFiles(wtPath, []string{"CLAUDE.md"})
+
+	// Modify file in worktree
+	if err := os.WriteFile(filepath.Join(wtPath, "CLAUDE.md"), []byte("modified in worktree"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Merge back
+	if err := wt.MergeBack(wtPath, "CLAUDE.md"); err != nil {
+		t.Fatalf("MergeBack failed: %v", err)
+	}
+
+	// Verify source file has worktree content
+	content, err := os.ReadFile(filepath.Join(repoDir, "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("failed to read merged file: %v", err)
+	}
+	if string(content) != "modified in worktree" {
+		t.Errorf("expected 'modified in worktree', got '%s'", content)
 	}
 }
