@@ -88,3 +88,50 @@ func TestNewCommand(t *testing.T) {
 		t.Error("CLAUDE.md not copied")
 	}
 }
+
+func TestSwitchCommand(t *testing.T) {
+	repoDir, worktreeBase := setupTestRepo(t)
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	buf := new(bytes.Buffer)
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	// First switch creates the worktree
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"switch", "feature-switch",
+		"--worktree-base", worktreeBase,
+		"--print-path",
+	})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("first switch failed: %v", err)
+	}
+
+	expectedPath := filepath.Join(worktreeBase, "myrepo", "feature-switch")
+	if strings.TrimSpace(buf.String()) != expectedPath {
+		t.Errorf("expected %s, got %s", expectedPath, buf.String())
+	}
+
+	// Second switch should work (idempotent)
+	buf.Reset()
+	rootCmd.SetArgs([]string{"switch", "feature-switch",
+		"--worktree-base", worktreeBase,
+		"--print-path",
+	})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("second switch failed: %v", err)
+	}
+
+	if strings.TrimSpace(buf.String()) != expectedPath {
+		t.Errorf("second switch: expected %s, got %s", expectedPath, buf.String())
+	}
+}
