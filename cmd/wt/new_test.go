@@ -98,6 +98,13 @@ func TestSwitchCommand(t *testing.T) {
 	os.Chdir(repoDir)
 	defer os.Chdir(origDir)
 
+	// Create the branch first (switch no longer auto-creates branches)
+	cmd := exec.Command("git", "branch", "feature-switch")
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git branch failed: %v\n%s", err, out)
+	}
+
 	buf := new(bytes.Buffer)
 	defer func() {
 		rootCmd.SetOut(nil)
@@ -105,7 +112,7 @@ func TestSwitchCommand(t *testing.T) {
 		rootCmd.SetArgs(nil)
 	}()
 
-	// First switch creates the worktree
+	// First switch creates worktree for existing branch
 	rootCmd.SetOut(buf)
 	rootCmd.SetErr(buf)
 	rootCmd.SetArgs([]string{"switch", "feature-switch",
@@ -135,6 +142,39 @@ func TestSwitchCommand(t *testing.T) {
 
 	if strings.TrimSpace(buf.String()) != expectedPath {
 		t.Errorf("second switch: expected %s, got %s", expectedPath, buf.String())
+	}
+}
+
+func TestSwitchNonExistentBranch(t *testing.T) {
+	repoDir, worktreeBase := setupTestRepo(t)
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	buf := new(bytes.Buffer)
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	// Switch to non-existent branch should fail
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"switch", "typo-branch",
+		"--worktree-base", worktreeBase,
+		"--print-path",
+	})
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("switch to non-existent branch should fail")
+	}
+
+	// Error message should mention the branch doesn't exist
+	if !strings.Contains(err.Error(), "does not exist") && !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention branch doesn't exist, got: %v", err)
 	}
 }
 

@@ -41,7 +41,8 @@ wt new feature-branch
 ```bash
 wt switch feature-branch
 # If worktree exists: cd into it
-# If worktree doesn't exist: create it, then cd into it
+# If branch exists but no worktree: create worktree, then cd into it
+# If branch doesn't exist: error (use 'wt new' to create new branches)
 ```
 
 ### List worktrees

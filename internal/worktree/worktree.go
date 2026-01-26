@@ -13,6 +13,7 @@ import (
 
 var ErrWorktreeExists = errors.New("worktree already exists")
 var ErrWorktreeNotFound = errors.New("worktree does not exist")
+var ErrBranchNotFound = errors.New("branch does not exist")
 
 // Manager handles worktree operations for a repository
 type Manager struct {
@@ -40,6 +41,13 @@ func (m *Manager) Exists(branch string) bool {
 	wtPath := m.WorktreePath(branch)
 	_, err := os.Stat(wtPath)
 	return err == nil
+}
+
+// BranchExists checks if a branch exists in the git repository
+func (m *Manager) BranchExists(branch string) bool {
+	cmd := exec.Command("git", "rev-parse", "--verify", branch)
+	cmd.Dir = m.RepoRoot
+	return cmd.Run() == nil
 }
 
 // Create creates a new worktree for the given branch.
