@@ -180,3 +180,113 @@ func TestDefaultPathsWithXDG(t *testing.T) {
 		t.Errorf("WorktreeBase with XDG: expected /custom/data/wt/worktrees, got %s", paths.WorktreeBase)
 	}
 }
+
+func TestFindContainerfile_InDataDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, "data", "wt")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	containerfile := filepath.Join(dataDir, "Containerfile")
+	if err := os.WriteFile(containerfile, []byte("FROM fedora"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origDataHome := os.Getenv("XDG_DATA_HOME")
+	os.Setenv("XDG_DATA_HOME", filepath.Join(tmpDir, "data"))
+	defer os.Setenv("XDG_DATA_HOME", origDataHome)
+
+	repoRoot := filepath.Join(tmpDir, "repo") // doesn't exist, shouldn't matter
+	found, err := FindContainerfile(repoRoot)
+	if err != nil {
+		t.Fatalf("FindContainerfile failed: %v", err)
+	}
+	if found != containerfile {
+		t.Errorf("expected %s, got %s", containerfile, found)
+	}
+}
+
+func TestFindContainerfile_InRepoRoot(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Set data dir to empty location (no Containerfile there)
+	origDataHome := os.Getenv("XDG_DATA_HOME")
+	os.Setenv("XDG_DATA_HOME", filepath.Join(tmpDir, "empty-data"))
+	defer os.Setenv("XDG_DATA_HOME", origDataHome)
+
+	repoRoot := filepath.Join(tmpDir, "repo")
+	if err := os.MkdirAll(repoRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	containerfile := filepath.Join(repoRoot, "Containerfile")
+	if err := os.WriteFile(containerfile, []byte("FROM fedora"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := FindContainerfile(repoRoot)
+	if err != nil {
+		t.Fatalf("FindContainerfile failed: %v", err)
+	}
+	if found != containerfile {
+		t.Errorf("expected %s, got %s", containerfile, found)
+	}
+}
+
+func TestFindContainerfile_DataDirTakesPrecedence(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create Containerfile in both locations
+	dataDir := filepath.Join(tmpDir, "data", "wt")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	dataContainerfile := filepath.Join(dataDir, "Containerfile")
+	if err := os.WriteFile(dataContainerfile, []byte("FROM fedora"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repoRoot := filepath.Join(tmpDir, "repo")
+	if err := os.MkdirAll(repoRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+	repoContainerfile := filepath.Join(repoRoot, "Containerfile")
+	if err := os.WriteFile(repoContainerfile, []byte("FROM ubuntu"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origDataHome := os.Getenv("XDG_DATA_HOME")
+	os.Setenv("XDG_DATA_HOME", filepath.Join(tmpDir, "data"))
+	defer os.Setenv("XDG_DATA_HOME", origDataHome)
+
+	found, err := FindContainerfile(repoRoot)
+	if err != nil {
+		t.Fatalf("FindContainerfile failed: %v", err)
+	}
+	// Data dir should take precedence
+	if found != dataContainerfile {
+		t.Errorf("expected data dir Containerfile %s, got %s", dataContainerfile, found)
+	}
+}
+
+func TestFindContainerfile_NotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	origDataHome := os.Getenv("XDG_DATA_HOME")
+	os.Setenv("XDG_DATA_HOME", filepath.Join(tmpDir, "empty-data"))
+	defer os.Setenv("XDG_DATA_HOME", origDataHome)
+
+	repoRoot := filepath.Join(tmpDir, "repo")
+	if err := os.MkdirAll(repoRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := FindContainerfile(repoRoot)
+	if err == nil {
+		t.Error("expected error when Containerfile not found")
+	}
+	if err != ErrContainerfileNotFound {
+		t.Errorf("expected ErrContainerfileNotFound, got %v", err)
+	}
+}

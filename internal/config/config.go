@@ -1,11 +1,15 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
 	"github.com/pelletier/go-toml/v2"
 )
+
+// ErrContainerfileNotFound is returned when no Containerfile can be located
+var ErrContainerfileNotFound = errors.New("Containerfile not found")
 
 // Config represents wt configuration from TOML files
 type Config struct {
@@ -79,4 +83,29 @@ func DefaultPaths() Paths {
 		GlobalConfig: filepath.Join(configHome, "wt", "config.toml"),
 		WorktreeBase: filepath.Join(dataHome, "wt", "worktrees"),
 	}
+}
+
+// FindContainerfile locates the Containerfile for building the sandbox image.
+// It checks the XDG data directory first (~/.local/share/wt/Containerfile),
+// then falls back to the repo root (for development).
+func FindContainerfile(repoRoot string) (string, error) {
+	dataHome := os.Getenv("XDG_DATA_HOME")
+	if dataHome == "" {
+		home := os.Getenv("HOME")
+		dataHome = filepath.Join(home, ".local", "share")
+	}
+
+	// Check XDG data dir first (installed location)
+	dataContainerfile := filepath.Join(dataHome, "wt", "Containerfile")
+	if _, err := os.Stat(dataContainerfile); err == nil {
+		return dataContainerfile, nil
+	}
+
+	// Fall back to repo root (development location)
+	repoContainerfile := filepath.Join(repoRoot, "Containerfile")
+	if _, err := os.Stat(repoContainerfile); err == nil {
+		return repoContainerfile, nil
+	}
+
+	return "", ErrContainerfileNotFound
 }

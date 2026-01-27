@@ -99,10 +99,9 @@ var sandboxCmd = &cobra.Command{
 
 		if !sandbox.ImageExists(imageName) {
 			fmt.Fprintln(cmd.OutOrStdout(), "Building sandbox image (this may take a few minutes)...")
-			// Look for Containerfile in repo root or installed location
-			containerfile := filepath.Join(repoRoot, "Containerfile")
-			if _, err := os.Stat(containerfile); os.IsNotExist(err) {
-				return fmt.Errorf("Containerfile not found. Run from wt repo or specify --image")
+			containerfile, err := config.FindContainerfile(repoRoot)
+			if err != nil {
+				return fmt.Errorf("Containerfile not found. Copy it to ~/.local/share/wt/Containerfile or specify --image")
 			}
 			if err := sandbox.BuildImage(containerfile, imageName); err != nil {
 				return fmt.Errorf("building image: %w", err)
