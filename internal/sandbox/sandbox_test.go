@@ -88,6 +88,7 @@ func TestBuildArgsTildeExpansion(t *testing.T) {
 func TestBuildArgsMountsMiseDirs(t *testing.T) {
 	opts := &Options{
 		WorktreePath:   "/tmp/test-worktree",
+		MiseDataDir:    "/home/user/.local/share/mise",
 		MiseStateDir:   "/home/user/.local/state/mise",
 		MiseCacheDir:   "/home/user/.cache/mise",
 		ContainerImage: "wt-sandbox",
@@ -99,6 +100,11 @@ func TestBuildArgsMountsMiseDirs(t *testing.T) {
 	}
 
 	argStr := strings.Join(args, " ")
+
+	// Mise data dir should be mounted RW so installed tools persist
+	if !strings.Contains(argStr, "-v /home/user/.local/share/mise:/home/user/.local/share/mise:Z") {
+		t.Errorf("missing mise data dir mount, got: %s", argStr)
+	}
 
 	// Mise state dir should be mounted RW so it can persist trust decisions
 	if !strings.Contains(argStr, "-v /home/user/.local/state/mise:/home/user/.local/state/mise:Z") {

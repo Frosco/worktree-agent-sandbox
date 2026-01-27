@@ -88,7 +88,8 @@ var sandboxCmd = &cobra.Command{
 		home, _ := os.UserHomeDir()
 		claudeDir := filepath.Join(home, ".claude")
 
-		// Mise directories (for persisting trusted configs and downloaded tools)
+		// Mise directories (for persisting installed tools, trust state, and cache)
+		miseDataDir := filepath.Join(home, ".local", "share", "mise")
 		miseStateDir := filepath.Join(home, ".local", "state", "mise")
 		miseCacheDir := filepath.Join(home, ".cache", "mise")
 
@@ -116,6 +117,7 @@ var sandboxCmd = &cobra.Command{
 			WorktreePath:   wtPath,
 			MainGitDir:     mainGitDir,
 			ClaudeDir:      claudeDir,
+			MiseDataDir:    miseDataDir,
 			MiseStateDir:   miseStateDir,
 			MiseCacheDir:   miseCacheDir,
 			ExtraMounts:    allMounts,

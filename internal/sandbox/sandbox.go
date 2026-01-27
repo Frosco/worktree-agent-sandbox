@@ -13,6 +13,7 @@ type Options struct {
 	WorktreePath   string
 	MainGitDir     string
 	ClaudeDir      string
+	MiseDataDir    string
 	MiseStateDir   string
 	MiseCacheDir   string
 	ExtraMounts    []string
@@ -56,12 +57,13 @@ func (o *Options) BuildArgs() ([]string, error) {
 		args = append(args, "-e", fmt.Sprintf("HOME=%s", homeDir))
 	}
 
-	// Mount mise state dir read-write so it can persist trust decisions
+	// Mount mise directories read-write so tools and state persist
+	if o.MiseDataDir != "" {
+		args = append(args, "-v", fmt.Sprintf("%s:%s:Z", o.MiseDataDir, o.MiseDataDir))
+	}
 	if o.MiseStateDir != "" {
 		args = append(args, "-v", fmt.Sprintf("%s:%s:Z", o.MiseStateDir, o.MiseStateDir))
 	}
-
-	// Mount mise cache dir read-write so downloaded tools persist
 	if o.MiseCacheDir != "" {
 		args = append(args, "-v", fmt.Sprintf("%s:%s:Z", o.MiseCacheDir, o.MiseCacheDir))
 	}
