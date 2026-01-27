@@ -85,6 +85,26 @@ func TestBuildArgsTildeExpansion(t *testing.T) {
 	}
 }
 
+func TestBuildArgsMountsMiseStateDir(t *testing.T) {
+	opts := &Options{
+		WorktreePath:   "/tmp/test-worktree",
+		MiseStateDir:   "/home/user/.local/state/mise",
+		ContainerImage: "wt-sandbox",
+	}
+
+	args, err := opts.BuildArgs()
+	if err != nil {
+		t.Fatalf("BuildArgs failed: %v", err)
+	}
+
+	argStr := strings.Join(args, " ")
+
+	// Mise state dir should be mounted RW so it can persist trust decisions
+	if !strings.Contains(argStr, "-v /home/user/.local/state/mise:/home/user/.local/state/mise:Z") {
+		t.Errorf("missing mise state dir mount, got: %s", argStr)
+	}
+}
+
 func TestBuildArgsSetsHomeEnvVar(t *testing.T) {
 	opts := &Options{
 		WorktreePath:   "/tmp/test-worktree",

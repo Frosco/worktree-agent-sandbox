@@ -88,6 +88,9 @@ var sandboxCmd = &cobra.Command{
 		home, _ := os.UserHomeDir()
 		claudeDir := filepath.Join(home, ".claude")
 
+		// Mise state directory (for persisting trusted configs)
+		miseStateDir := filepath.Join(home, ".local", "state", "mise")
+
 		// Combine extra mounts from config and flags
 		allMounts := append(cfg.ExtraMounts, sandboxMounts...)
 
@@ -112,6 +115,7 @@ var sandboxCmd = &cobra.Command{
 			WorktreePath:   wtPath,
 			MainGitDir:     mainGitDir,
 			ClaudeDir:      claudeDir,
+			MiseStateDir:   miseStateDir,
 			ExtraMounts:    allMounts,
 			ContainerImage: imageName,
 			RunMiseInstall: !sandboxNoMise,

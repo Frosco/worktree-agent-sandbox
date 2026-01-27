@@ -13,6 +13,7 @@ type Options struct {
 	WorktreePath   string
 	MainGitDir     string
 	ClaudeDir      string
+	MiseStateDir   string
 	ExtraMounts    []string
 	ContainerImage string
 	RunMiseInstall bool
@@ -52,6 +53,11 @@ func (o *Options) BuildArgs() ([]string, error) {
 		// Set HOME to parent of ClaudeDir so Claude Code finds its config
 		homeDir := filepath.Dir(o.ClaudeDir)
 		args = append(args, "-e", fmt.Sprintf("HOME=%s", homeDir))
+	}
+
+	// Mount mise state dir read-write so it can persist trust decisions
+	if o.MiseStateDir != "" {
+		args = append(args, "-v", fmt.Sprintf("%s:%s:Z", o.MiseStateDir, o.MiseStateDir))
 	}
 
 	// Extra mounts
