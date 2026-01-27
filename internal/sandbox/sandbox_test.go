@@ -85,6 +85,26 @@ func TestBuildArgsTildeExpansion(t *testing.T) {
 	}
 }
 
+func TestBuildArgsSetsHomeEnvVar(t *testing.T) {
+	opts := &Options{
+		WorktreePath:   "/tmp/test-worktree",
+		ClaudeDir:      "/home/user/.claude",
+		ContainerImage: "wt-sandbox",
+	}
+
+	args, err := opts.BuildArgs()
+	if err != nil {
+		t.Fatalf("BuildArgs failed: %v", err)
+	}
+
+	argStr := strings.Join(args, " ")
+
+	// HOME env var should be set to parent of ClaudeDir so Claude Code finds its config
+	if !strings.Contains(argStr, "-e HOME=/home/user") {
+		t.Errorf("missing HOME env var, got: %s", argStr)
+	}
+}
+
 func TestPodmanAvailable(t *testing.T) {
 	err := CheckPodmanAvailable()
 	// This test depends on podman being installed
