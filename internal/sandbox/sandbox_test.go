@@ -137,6 +137,26 @@ func TestBuildArgsSetsHomeEnvVar(t *testing.T) {
 	}
 }
 
+func TestBuildArgsMountsClaudeConfigFile(t *testing.T) {
+	opts := &Options{
+		WorktreePath:     "/tmp/test-worktree",
+		ClaudeConfigFile: "/home/user/.claude.json",
+		ContainerImage:   "wt-sandbox",
+	}
+
+	args, err := opts.BuildArgs()
+	if err != nil {
+		t.Fatalf("BuildArgs failed: %v", err)
+	}
+
+	argStr := strings.Join(args, " ")
+
+	// Claude config file should be mounted RW for global state
+	if !strings.Contains(argStr, "-v /home/user/.claude.json:/home/user/.claude.json:Z") {
+		t.Errorf("missing claude config file mount, got: %s", argStr)
+	}
+}
+
 func TestPodmanAvailable(t *testing.T) {
 	err := CheckPodmanAvailable()
 	// This test depends on podman being installed

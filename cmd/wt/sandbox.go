@@ -84,9 +84,18 @@ var sandboxCmd = &cobra.Command{
 		// Find the main .git directory
 		mainGitDir := filepath.Join(repoRoot, ".git")
 
-		// Claude credentials directory
+		// Claude credentials directory and config file
 		home, _ := os.UserHomeDir()
 		claudeDir := filepath.Join(home, ".claude")
+
+		// Claude global config file (~/.claude.json) - only mount if exists
+		claudeConfigFile := filepath.Join(home, ".claude.json")
+		if _, err := os.Stat(claudeConfigFile); os.IsNotExist(err) {
+			// Create empty file so Claude Code can write to it
+			if f, err := os.Create(claudeConfigFile); err == nil {
+				f.Close()
+			}
+		}
 
 		// Mise directories (for persisting installed tools, trust state, and cache)
 		miseDataDir := filepath.Join(home, ".local", "share", "mise")
@@ -114,16 +123,17 @@ var sandboxCmd = &cobra.Command{
 		}
 
 		opts := &sandbox.Options{
-			WorktreePath:   wtPath,
-			MainGitDir:     mainGitDir,
-			ClaudeDir:      claudeDir,
-			MiseDataDir:    miseDataDir,
-			MiseStateDir:   miseStateDir,
-			MiseCacheDir:   miseCacheDir,
-			ExtraMounts:    allMounts,
-			ContainerImage: imageName,
-			RunMiseInstall: !sandboxNoMise,
-			StartClaude:    !sandboxNoClaude,
+			WorktreePath:     wtPath,
+			MainGitDir:       mainGitDir,
+			ClaudeDir:        claudeDir,
+			ClaudeConfigFile: claudeConfigFile,
+			MiseDataDir:      miseDataDir,
+			MiseStateDir:     miseStateDir,
+			MiseCacheDir:     miseCacheDir,
+			ExtraMounts:      allMounts,
+			ContainerImage:   imageName,
+			RunMiseInstall:   !sandboxNoMise,
+			StartClaude:      !sandboxNoClaude,
 		}
 
 		fmt.Fprintf(cmd.OutOrStdout(), "Starting sandbox in %s...\n", wtPath)

@@ -10,16 +10,17 @@ import (
 
 // Options configures the sandbox container
 type Options struct {
-	WorktreePath   string
-	MainGitDir     string
-	ClaudeDir      string
-	MiseDataDir    string
-	MiseStateDir   string
-	MiseCacheDir   string
-	ExtraMounts    []string
-	ContainerImage string
-	RunMiseInstall bool
-	StartClaude    bool
+	WorktreePath     string
+	MainGitDir       string
+	ClaudeDir        string
+	ClaudeConfigFile string // ~/.claude.json global state file
+	MiseDataDir      string
+	MiseStateDir     string
+	MiseCacheDir     string
+	ExtraMounts      []string
+	ContainerImage   string
+	RunMiseInstall   bool
+	StartClaude      bool
 }
 
 // CheckPodmanAvailable verifies podman is installed
@@ -55,6 +56,11 @@ func (o *Options) BuildArgs() ([]string, error) {
 		// Set HOME to parent of ClaudeDir so Claude Code finds its config
 		homeDir := filepath.Dir(o.ClaudeDir)
 		args = append(args, "-e", fmt.Sprintf("HOME=%s", homeDir))
+	}
+
+	// Mount claude global config file (~/.claude.json) read-write
+	if o.ClaudeConfigFile != "" {
+		args = append(args, "-v", fmt.Sprintf("%s:%s:Z", o.ClaudeConfigFile, o.ClaudeConfigFile))
 	}
 
 	// Mount mise directories read-write so tools and state persist
