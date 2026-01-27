@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim
 
 # Install basic tools
 RUN apt-get update && apt-get install -y \
@@ -15,18 +15,13 @@ ENV PATH="/root/.local/bin:$PATH"
 # Install Claude Code globally
 RUN npm install -g @anthropic-ai/claude-code
 
-# Create non-root user matching typical host UID
-ARG USER_ID=1000
-ARG GROUP_ID=1000
-RUN groupadd -g $GROUP_ID appuser && \
-    useradd -m -u $USER_ID -g $GROUP_ID appuser
-
-USER appuser
-WORKDIR /home/appuser
+# Use the existing node user (UID/GID 1000) from the base image
+USER node
+WORKDIR /home/node
 
 # Mise for non-root user
 RUN curl https://mise.run | sh
-ENV PATH="/home/appuser/.local/bin:$PATH"
+ENV PATH="/home/node/.local/bin:$PATH"
 
 # Entry script will be bind-mounted
 CMD ["bash"]
