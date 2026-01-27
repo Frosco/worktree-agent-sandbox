@@ -18,7 +18,7 @@ var (
 var switchCmd = &cobra.Command{
 	Use:   "switch <branch>",
 	Short: "Switch to a worktree for an existing branch",
-	Long:  `Switch to a worktree for an existing branch. Creates the worktree if needed, but the branch must already exist. Use 'wt new' to create a new branch.`,
+	Long:  `Switch to a worktree for an existing branch. Creates the worktree if needed. The branch must exist locally or on origin. Use 'wt new' to create a new branch.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		branch := args[0]
@@ -67,9 +67,9 @@ var switchCmd = &cobra.Command{
 			return nil
 		}
 
-		// Check if branch exists in git - if not, fail (don't auto-create)
-		if !mgr.BranchExists(branch) {
-			return fmt.Errorf("branch %q does not exist (use 'wt new' to create a new branch)", branch)
+		// Check if branch exists locally or on remote - if neither, fail (don't auto-create)
+		if !mgr.BranchExists(branch) && !mgr.RemoteBranchExists(branch) {
+			return fmt.Errorf("branch %q does not exist locally or on origin (use 'wt new' to create a new branch)", branch)
 		}
 
 		// Branch exists but no worktree - create worktree for it

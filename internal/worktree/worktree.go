@@ -43,15 +43,24 @@ func (m *Manager) Exists(branch string) bool {
 	return err == nil
 }
 
-// BranchExists checks if a branch exists in the git repository
+// BranchExists checks if a local branch exists in the git repository
 func (m *Manager) BranchExists(branch string) bool {
 	cmd := exec.Command("git", "rev-parse", "--verify", branch)
 	cmd.Dir = m.RepoRoot
 	return cmd.Run() == nil
 }
 
+// RemoteBranchExists checks if a branch exists on the origin remote
+func (m *Manager) RemoteBranchExists(branch string) bool {
+	cmd := exec.Command("git", "rev-parse", "--verify", "refs/remotes/origin/"+branch)
+	cmd.Dir = m.RepoRoot
+	return cmd.Run() == nil
+}
+
 // Create creates a new worktree for the given branch.
-// Creates the branch if it doesn't exist.
+// If the branch exists locally, uses it directly.
+// If the branch exists only on origin, creates a local tracking branch.
+// If the branch doesn't exist anywhere, creates a new branch.
 func (m *Manager) Create(branch string) (string, error) {
 	wtPath := m.WorktreePath(branch)
 
@@ -64,15 +73,19 @@ func (m *Manager) Create(branch string) (string, error) {
 		return "", err
 	}
 
-	// Check if branch exists
-	checkCmd := exec.Command("git", "rev-parse", "--verify", branch)
-	checkCmd.Dir = m.RepoRoot
-	branchExists := checkCmd.Run() == nil
+	localExists := m.BranchExists(branch)
+	remoteExists := m.RemoteBranchExists(branch)
 
 	var cmd *exec.Cmd
-	if branchExists {
+	switch {
+	case localExists:
+		// Local branch exists - use it directly
 		cmd = exec.Command("git", "worktree", "add", wtPath, branch)
-	} else {
+	case remoteExists:
+		// Remote branch exists - create local tracking branch
+		cmd = exec.Command("git", "worktree", "add", "-b", branch, wtPath, "origin/"+branch)
+	default:
+		// No branch exists - create new branch
 		cmd = exec.Command("git", "worktree", "add", "-b", branch, wtPath)
 	}
 	cmd.Dir = m.RepoRoot

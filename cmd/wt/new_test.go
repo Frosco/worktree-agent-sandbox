@@ -178,6 +178,122 @@ func TestSwitchNonExistentBranch(t *testing.T) {
 	}
 }
 
+func setupTestRepoWithRemote(t *testing.T) (repoDir, worktreeBase, bareRemote string) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	bareRemote = filepath.Join(tmpDir, "remote.git")
+	repoDir = filepath.Join(tmpDir, "local")
+	worktreeBase = filepath.Join(tmpDir, "worktrees")
+
+	// Create bare remote
+	if err := os.MkdirAll(bareRemote, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "init", "--bare")
+	cmd.Dir = bareRemote
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare failed: %v\n%s", err, out)
+	}
+
+	// Clone the bare remote to create local repo
+	cmd = exec.Command("git", "clone", bareRemote, repoDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git clone failed: %v\n%s", err, out)
+	}
+
+	// Configure and make initial commit
+	cmds := [][]string{
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "commit", "--allow-empty", "-m", "initial"},
+		{"git", "push", "-u", "origin", "HEAD"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	return repoDir, worktreeBase, bareRemote
+}
+
+func TestSwitchRemoteBranch(t *testing.T) {
+	repoDir, worktreeBase, bareRemote := setupTestRepoWithRemote(t)
+
+	// Create a branch in a separate clone and push it
+	tmpClone := filepath.Join(t.TempDir(), "tmpclone")
+	cmd := exec.Command("git", "clone", bareRemote, tmpClone)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("clone failed: %v\n%s", err, out)
+	}
+
+	cmds := [][]string{
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "checkout", "-b", "remote-feature"},
+		{"git", "commit", "--allow-empty", "-m", "feature commit"},
+		{"git", "push", "-u", "origin", "remote-feature"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = tmpClone
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	// Fetch in main repo so it knows about the remote branch
+	cmd = exec.Command("git", "fetch", "origin")
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("fetch failed: %v\n%s", err, out)
+	}
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	buf := new(bytes.Buffer)
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	// Switch to remote-only branch should work
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"switch", "remote-feature",
+		"--worktree-base", worktreeBase,
+		"--print-path",
+	})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("switch to remote branch failed: %v\n%s", err, buf.String())
+	}
+
+	expectedPath := filepath.Join(worktreeBase, "local", "remote-feature")
+	output := strings.TrimSpace(buf.String())
+	if output != expectedPath {
+		t.Errorf("expected %s, got %s", expectedPath, output)
+	}
+
+	// Verify worktree was created on the correct branch
+	cmd = exec.Command("git", "branch", "--show-current")
+	cmd.Dir = expectedPath
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git branch failed: %v\n%s", err, out)
+	}
+
+	branch := strings.TrimSpace(string(out))
+	if branch != "remote-feature" {
+		t.Errorf("expected branch 'remote-feature', got %q", branch)
+	}
+}
+
 func TestSwitchToMainBranch(t *testing.T) {
 	repoDir, worktreeBase := setupTestRepo(t)
 
