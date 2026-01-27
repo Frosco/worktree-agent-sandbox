@@ -14,6 +14,7 @@ type Options struct {
 	MainGitDir     string
 	ClaudeDir      string
 	MiseStateDir   string
+	MiseCacheDir   string
 	ExtraMounts    []string
 	ContainerImage string
 	RunMiseInstall bool
@@ -58,6 +59,11 @@ func (o *Options) BuildArgs() ([]string, error) {
 	// Mount mise state dir read-write so it can persist trust decisions
 	if o.MiseStateDir != "" {
 		args = append(args, "-v", fmt.Sprintf("%s:%s:Z", o.MiseStateDir, o.MiseStateDir))
+	}
+
+	// Mount mise cache dir read-write so downloaded tools persist
+	if o.MiseCacheDir != "" {
+		args = append(args, "-v", fmt.Sprintf("%s:%s:Z", o.MiseCacheDir, o.MiseCacheDir))
 	}
 
 	// Extra mounts
