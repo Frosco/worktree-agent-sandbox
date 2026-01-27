@@ -49,9 +49,9 @@ func (o *Options) BuildArgs() ([]string, error) {
 		args = append(args, "-v", fmt.Sprintf("%s:%s:ro", o.MainGitDir, o.MainGitDir))
 	}
 
-	// Mount claude dir read-only and set HOME env var
+	// Mount claude dir read-write (Claude Code needs to write debug logs, history, etc.)
 	if o.ClaudeDir != "" {
-		args = append(args, "-v", fmt.Sprintf("%s:%s:ro", o.ClaudeDir, o.ClaudeDir))
+		args = append(args, "-v", fmt.Sprintf("%s:%s:Z", o.ClaudeDir, o.ClaudeDir))
 		// Set HOME to parent of ClaudeDir so Claude Code finds its config
 		homeDir := filepath.Dir(o.ClaudeDir)
 		args = append(args, "-e", fmt.Sprintf("HOME=%s", homeDir))

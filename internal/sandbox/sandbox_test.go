@@ -38,7 +38,7 @@ func TestBuildArgs(t *testing.T) {
 	if !strings.Contains(argStr, "-v /home/user/worktrees/myrepo/feature:/home/user/worktrees/myrepo/feature:Z") {
 		t.Error("missing worktree mount")
 	}
-	if !strings.Contains(argStr, "-v /home/user/.claude:/home/user/.claude:ro") {
+	if !strings.Contains(argStr, "-v /home/user/.claude:/home/user/.claude:Z") {
 		t.Error("missing claude dir mount")
 	}
 
