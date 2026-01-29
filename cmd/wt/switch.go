@@ -16,13 +16,11 @@ var (
 )
 
 var switchCmd = &cobra.Command{
-	Use:   "switch <branch>",
+	Use:   "switch [branch]",
 	Short: "Switch to a worktree for an existing branch",
 	Long:  `Switch to a worktree for an existing branch. Creates the worktree if needed. The branch must exist locally or on origin. Use 'wt new' to create a new branch.`,
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		branch := args[0]
-
 		cwd, err := os.Getwd()
 		if err != nil {
 			return err
@@ -44,6 +42,17 @@ var switchCmd = &cobra.Command{
 		}
 
 		mgr := worktree.NewManager(repoRoot, worktreeBase)
+
+		// Determine branch - either from argument or interactive picker
+		var branch string
+		if len(args) == 0 {
+			branch, err = runInteractivePicker(repoRoot, mgr)
+			if err != nil {
+				return err
+			}
+		} else {
+			branch = args[0]
+		}
 
 		// If switching to the branch currently checked out in main repo, return main repo path
 		mainBranch, err := worktree.GetMainBranch(repoRoot)
