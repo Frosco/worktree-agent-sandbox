@@ -18,7 +18,11 @@ var (
 var switchCmd = &cobra.Command{
 	Use:   "switch [branch]",
 	Short: "Switch to a worktree for an existing branch",
-	Long:  `Switch to a worktree for an existing branch. Creates the worktree if needed. The branch must exist locally or on origin. Use 'wt new' to create a new branch.`,
+	Long: `Switch to a worktree for an existing branch. Creates the worktree if needed.
+
+If no branch is specified, displays an interactive picker to select from available worktrees.
+
+The branch must exist locally or on origin. Use 'wt new' to create a new branch.`,
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()
