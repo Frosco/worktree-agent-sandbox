@@ -83,8 +83,8 @@ wt sandbox -m ~/other-repo  # Mount additional paths
 ### Global config: `~/.config/wt/config.toml`
 
 ```toml
-# Files to copy to new worktrees
-copy_files = ["CLAUDE.md", ".envrc", "mise.local.toml"]
+# Files and directories to copy to new worktrees
+copy_files = ["CLAUDE.md", ".envrc", "mise.local.toml", ".ai"]
 
 # Additional paths to mount in sandbox
 extra_mounts = ["~/shared-libs", "~/data:ro"]
