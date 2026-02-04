@@ -494,3 +494,104 @@ func TestNewCommandBaseBranchWithExistingBranch(t *testing.T) {
 		t.Errorf("error should mention branch exists and --base cannot be applied, got: %v", err)
 	}
 }
+
+func TestRemoveForce_DirtyWorktree(t *testing.T) {
+	repoDir, worktreeBase := setupTestRepo(t)
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	// Create a worktree
+	mgr := worktree.NewManager(repoDir, worktreeBase)
+	wtPath, err := mgr.Create("dirty-feature", "")
+	if err != nil {
+		t.Fatalf("failed to create worktree: %v", err)
+	}
+
+	// Make it dirty with uncommitted changes
+	testFile := filepath.Join(wtPath, "dirty.txt")
+	if err := os.WriteFile(testFile, []byte("uncommitted"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+		// Reset flags to default values
+		removeForce = false
+		removeSkipChanges = false
+	}()
+
+	// Remove with --force should succeed
+	rootCmd.SetArgs([]string{"remove", "dirty-feature",
+		"--worktree-base", worktreeBase,
+		"--force",
+	})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("remove --force should succeed on dirty worktree: %v\n%s", err, buf.String())
+	}
+
+	// Verify worktree is gone
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Error("worktree should be removed")
+	}
+}
+
+func TestRemoveSkipChanges_DirtyWorktreeFails(t *testing.T) {
+	repoDir, worktreeBase := setupTestRepo(t)
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	// Reset flags before test (in case prior test set them)
+	removeForce = false
+	removeSkipChanges = false
+
+	// Create a worktree
+	mgr := worktree.NewManager(repoDir, worktreeBase)
+	wtPath, err := mgr.Create("skip-dirty", "")
+	if err != nil {
+		t.Fatalf("failed to create worktree: %v", err)
+	}
+
+	// Make it dirty with uncommitted changes
+	testFile := filepath.Join(wtPath, "dirty.txt")
+	if err := os.WriteFile(testFile, []byte("uncommitted"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+		// Reset flags to default values
+		removeForce = false
+		removeSkipChanges = false
+	}()
+
+	// Remove with --skip-changes alone should fail on dirty worktree
+	rootCmd.SetArgs([]string{"remove", "skip-dirty",
+		"--worktree-base", worktreeBase,
+		"--skip-changes",
+	})
+
+	execErr := rootCmd.Execute()
+	if execErr == nil {
+		t.Fatal("remove --skip-changes should fail on dirty worktree (git blocks it)")
+	}
+
+	// Verify worktree still exists
+	if _, err := os.Stat(wtPath); os.IsNotExist(err) {
+		t.Error("worktree should NOT be removed")
+	}
+}
