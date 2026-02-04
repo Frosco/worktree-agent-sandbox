@@ -15,6 +15,7 @@ var (
 	removeWorktreeBase string
 	removeConfigPath   string
 	removeForce        bool
+	removeSkipChanges  bool
 )
 
 var removeCmd = &cobra.Command{
@@ -53,8 +54,8 @@ var removeCmd = &cobra.Command{
 
 		wtPath := mgr.WorktreePath(branch)
 
-		// Check for config file changes (unless --force)
-		if !removeForce {
+		// Check for config file changes (unless --force or --skip-changes)
+		if !removeForce && !removeSkipChanges {
 			// Config errors are intentionally ignored here - we still want to allow
 			// removing a worktree even if config files are missing or malformed
 			globalCfg, _ := config.LoadGlobalConfig(configPath)
@@ -125,6 +126,7 @@ var removeCmd = &cobra.Command{
 func init() {
 	removeCmd.Flags().StringVar(&removeWorktreeBase, "worktree-base", "", "Override worktree base directory")
 	removeCmd.Flags().StringVar(&removeConfigPath, "config", "", "Override global config path")
-	removeCmd.Flags().BoolVarP(&removeForce, "force", "f", false, "Skip change detection")
+	removeCmd.Flags().BoolVarP(&removeForce, "force", "f", false, "Force removal even if worktree has uncommitted changes")
+	removeCmd.Flags().BoolVar(&removeSkipChanges, "skip-changes", false, "Skip config file change detection")
 	rootCmd.AddCommand(removeCmd)
 }

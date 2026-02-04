@@ -382,7 +382,7 @@ func TestRemoveCommand(t *testing.T) {
 	rootCmd.SetErr(buf)
 	rootCmd.SetArgs([]string{"remove", "feature-remove",
 		"--worktree-base", worktreeBase,
-		"--force", // Skip change detection prompt
+		"--force", // Force git removal and skip change detection prompt
 	})
 	defer func() {
 		rootCmd.SetOut(nil)
