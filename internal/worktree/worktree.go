@@ -70,6 +70,17 @@ func (m *Manager) BranchUpstream(branch string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// DeleteBranch deletes a local branch.
+// Returns an error if the branch doesn't exist or can't be deleted.
+func (m *Manager) DeleteBranch(branch string) error {
+	cmd := exec.Command("git", "branch", "-d", branch)
+	cmd.Dir = m.RepoRoot
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git branch -d: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 // FetchBranch fetches a specific branch from origin.
 // Returns an error if the branch doesn't exist on the remote.
 func (m *Manager) FetchBranch(branch string) error {

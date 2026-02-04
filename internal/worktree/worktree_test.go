@@ -623,3 +623,42 @@ func TestBranchUpstream_NoTracking(t *testing.T) {
 		t.Errorf("expected empty string for local-only branch, got %q", upstream)
 	}
 }
+
+func TestDeleteBranch(t *testing.T) {
+	mainRepo, _, worktreeBase := setupRepoWithRemote(t)
+
+	// Create a branch
+	cmd := exec.Command("git", "branch", "branch-to-delete")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("create branch failed: %v\n%s", err, out)
+	}
+
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	// Verify branch exists
+	if !mgr.BranchExists("branch-to-delete") {
+		t.Fatal("branch should exist before delete")
+	}
+
+	// Delete the branch
+	err := mgr.DeleteBranch("branch-to-delete")
+	if err != nil {
+		t.Fatalf("DeleteBranch failed: %v", err)
+	}
+
+	// Verify branch is gone
+	if mgr.BranchExists("branch-to-delete") {
+		t.Error("branch should not exist after delete")
+	}
+}
+
+func TestDeleteBranch_NotFound(t *testing.T) {
+	mainRepo, _, worktreeBase := setupRepoWithRemote(t)
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	err := mgr.DeleteBranch("nonexistent-branch")
+	if err == nil {
+		t.Error("expected error for nonexistent branch")
+	}
+}
