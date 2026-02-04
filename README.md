@@ -7,6 +7,7 @@ A CLI tool to manage git worktrees with automatic config file copying and Podman
 - Create and switch between git worktrees with a single command
 - Automatically copy gitignored config files (like `CLAUDE.md`, `mise.local.toml`) to new worktrees
 - Detect changes in config files when removing worktrees and offer to merge them back
+- Prune stale worktrees whose branches were deleted from remote
 - Run Claude Code in a sandboxed Podman container with `--dangerously-skip-permissions`
 - Shell integration for seamless `cd` into worktrees
 
@@ -66,6 +67,21 @@ wt remove feature-branch
 # Detects if config files were modified
 # Offers to merge changes back to main worktree
 # Use --force to skip change detection
+```
+
+### Prune stale worktrees
+
+```bash
+wt prune
+# Removes worktrees whose branches were deleted from remote (merged or manually deleted)
+# Only considers branches with upstream tracking - local-only branches are never pruned
+# Prompts for worktrees with uncommitted changes
+
+wt prune --dry-run
+# Preview what would be pruned without removing anything
+
+wt prune --force --skip-changes
+# Skip all prompts (uncommitted changes and config file detection)
 ```
 
 ### Run in sandbox
