@@ -60,6 +60,14 @@ var newCmd = &cobra.Command{
 
 		// Create worktree
 		mgr := worktree.NewManager(repoRoot, worktreeBase)
+
+		// Validate -b flag usage
+		if newBaseBranch != "" {
+			if mgr.BranchExists(branch) || mgr.RemoteBranchExists(branch) {
+				return fmt.Errorf("branch '%s' already exists, cannot apply --base", branch)
+			}
+		}
+
 		wtPath, err := mgr.Create(branch, newBaseBranch)
 		if err != nil {
 			if errors.Is(err, worktree.ErrWorktreeExists) {

@@ -457,3 +457,40 @@ func TestNewCommandWithBaseBranch(t *testing.T) {
 		t.Errorf("expected based on develop, got: %s", out)
 	}
 }
+
+func TestNewCommandBaseBranchWithExistingBranch(t *testing.T) {
+	repoDir, worktreeBase := setupTestRepo(t)
+
+	// Create a branch that already exists
+	cmd := exec.Command("git", "branch", "existing-branch")
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("create branch failed: %v\n%s", err, out)
+	}
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	// Try to create worktree with -b for an existing branch
+	rootCmd.SetArgs([]string{"new", "existing-branch", "-b", "master",
+		"--worktree-base", worktreeBase,
+	})
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when using -b with existing branch")
+	}
+	if !strings.Contains(err.Error(), "already exists") || !strings.Contains(err.Error(), "--base") {
+		t.Errorf("error should mention branch exists and --base cannot be applied, got: %v", err)
+	}
+}
