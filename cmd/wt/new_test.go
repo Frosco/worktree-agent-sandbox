@@ -399,3 +399,61 @@ func TestRemoveCommand(t *testing.T) {
 		t.Error("worktree should be removed")
 	}
 }
+
+func TestNewCommandWithBaseBranch(t *testing.T) {
+	repoDir, worktreeBase := setupTestRepo(t)
+
+	// Create a develop branch
+	cmd := exec.Command("git", "checkout", "-b", "develop")
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("create develop failed: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "commit", "--allow-empty", "-m", "develop commit")
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("commit failed: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "checkout", "master")
+	cmd.Dir = repoDir
+	cmd.CombinedOutput() // ignore error
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	rootCmd.SetArgs([]string{"new", "feature-from-base", "-b", "develop",
+		"--worktree-base", worktreeBase,
+		"--print-path",
+	})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("new command failed: %v\n%s", err, buf.String())
+	}
+
+	expectedPath := filepath.Join(worktreeBase, "myrepo", "feature-from-base")
+	output := strings.TrimSpace(buf.String())
+	if output != expectedPath {
+		t.Errorf("expected %s, got %s", expectedPath, output)
+	}
+
+	// Verify branch is based on develop
+	cmd = exec.Command("git", "log", "-1", "--format=%s", "HEAD")
+	cmd.Dir = expectedPath
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log failed: %v\n%s", err, out)
+	}
+	if strings.TrimSpace(string(out)) != "develop commit" {
+		t.Errorf("expected based on develop, got: %s", out)
+	}
+}
