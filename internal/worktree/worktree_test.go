@@ -579,3 +579,47 @@ func TestManager_Remove_NoForce_DirtyFails(t *testing.T) {
 		t.Error("Remove with force=false should fail on dirty worktree")
 	}
 }
+
+func TestBranchUpstream_WithTracking(t *testing.T) {
+	mainRepo, bareRemote, worktreeBase := setupRepoWithRemote(t)
+
+	// Create and push a branch with tracking
+	cmds := [][]string{
+		{"git", "checkout", "-b", "tracked-branch"},
+		{"git", "commit", "--allow-empty", "-m", "tracked commit"},
+		{"git", "push", "-u", "origin", "tracked-branch"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = mainRepo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+	_ = bareRemote // used by setup
+
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	upstream := mgr.BranchUpstream("tracked-branch")
+	if upstream != "origin/tracked-branch" {
+		t.Errorf("expected 'origin/tracked-branch', got %q", upstream)
+	}
+}
+
+func TestBranchUpstream_NoTracking(t *testing.T) {
+	mainRepo, _, worktreeBase := setupRepoWithRemote(t)
+
+	// Create a local-only branch (no push, no tracking)
+	cmd := exec.Command("git", "checkout", "-b", "local-only")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checkout failed: %v\n%s", err, out)
+	}
+
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	upstream := mgr.BranchUpstream("local-only")
+	if upstream != "" {
+		t.Errorf("expected empty string for local-only branch, got %q", upstream)
+	}
+}

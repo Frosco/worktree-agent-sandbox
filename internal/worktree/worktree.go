@@ -58,6 +58,18 @@ func (m *Manager) RemoteBranchExists(branch string) bool {
 	return cmd.Run() == nil
 }
 
+// BranchUpstream returns the upstream tracking ref for a branch (e.g., "origin/main").
+// Returns empty string if the branch has no upstream configured.
+func (m *Manager) BranchUpstream(branch string) string {
+	cmd := exec.Command("git", "for-each-ref", "--format=%(upstream:short)", "refs/heads/"+branch)
+	cmd.Dir = m.RepoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // FetchBranch fetches a specific branch from origin.
 // Returns an error if the branch doesn't exist on the remote.
 func (m *Manager) FetchBranch(branch string) error {
