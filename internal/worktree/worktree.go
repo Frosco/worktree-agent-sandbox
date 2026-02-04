@@ -82,6 +82,24 @@ func (m *Manager) HasUncommittedChanges(wtPath string) bool {
 	return len(strings.TrimSpace(string(out))) > 0
 }
 
+// HasUnpushedCommits checks if a branch has commits not pushed to its upstream.
+// Returns false if the branch has no upstream configured.
+func (m *Manager) HasUnpushedCommits(branch string) bool {
+	upstream := m.BranchUpstream(branch)
+	if upstream == "" {
+		return false
+	}
+	// Count commits in branch that are not in upstream
+	cmd := exec.Command("git", "rev-list", "--count", upstream+".."+branch)
+	cmd.Dir = m.RepoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	count := strings.TrimSpace(string(out))
+	return count != "0"
+}
+
 // DeleteBranch deletes a local branch.
 // Returns an error if the branch doesn't exist or can't be deleted.
 func (m *Manager) DeleteBranch(branch string) error {

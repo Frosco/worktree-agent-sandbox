@@ -724,3 +724,73 @@ func TestHasUncommittedChanges_Staged(t *testing.T) {
 		t.Error("worktree with staged file should have uncommitted changes")
 	}
 }
+
+func TestHasUnpushedCommits_NoneAhead(t *testing.T) {
+	mainRepo, bareRemote, worktreeBase := setupRepoWithRemote(t)
+
+	// Create and push a branch (fully synced)
+	cmds := [][]string{
+		{"git", "checkout", "-b", "synced-branch"},
+		{"git", "commit", "--allow-empty", "-m", "synced commit"},
+		{"git", "push", "-u", "origin", "synced-branch"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = mainRepo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+	_ = bareRemote
+
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	if mgr.HasUnpushedCommits("synced-branch") {
+		t.Error("fully synced branch should not have unpushed commits")
+	}
+}
+
+func TestHasUnpushedCommits_Ahead(t *testing.T) {
+	mainRepo, bareRemote, worktreeBase := setupRepoWithRemote(t)
+
+	// Create and push a branch, then add local commit
+	cmds := [][]string{
+		{"git", "checkout", "-b", "ahead-branch"},
+		{"git", "commit", "--allow-empty", "-m", "pushed commit"},
+		{"git", "push", "-u", "origin", "ahead-branch"},
+		{"git", "commit", "--allow-empty", "-m", "local only commit"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = mainRepo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+	_ = bareRemote
+
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	if !mgr.HasUnpushedCommits("ahead-branch") {
+		t.Error("branch with local commit should have unpushed commits")
+	}
+}
+
+func TestHasUnpushedCommits_NoUpstream(t *testing.T) {
+	mainRepo, _, worktreeBase := setupRepoWithRemote(t)
+
+	// Create local-only branch (no upstream)
+	cmd := exec.Command("git", "checkout", "-b", "no-upstream")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checkout failed: %v\n%s", err, out)
+	}
+
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	// No upstream means we can't determine - treat as "no unpushed" for prune safety
+	// (branches without upstream won't be pruned anyway)
+	if mgr.HasUnpushedCommits("no-upstream") {
+		t.Error("branch with no upstream should return false")
+	}
+}
