@@ -70,6 +70,18 @@ func (m *Manager) BranchUpstream(branch string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// HasUncommittedChanges checks if a worktree has uncommitted changes.
+// This includes untracked files, modified files, and staged changes.
+func (m *Manager) HasUncommittedChanges(wtPath string) bool {
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = wtPath
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return len(strings.TrimSpace(string(out))) > 0
+}
+
 // DeleteBranch deletes a local branch.
 // Returns an error if the branch doesn't exist or can't be deleted.
 func (m *Manager) DeleteBranch(branch string) error {

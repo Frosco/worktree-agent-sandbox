@@ -662,3 +662,65 @@ func TestDeleteBranch_NotFound(t *testing.T) {
 		t.Error("expected error for nonexistent branch")
 	}
 }
+
+func TestHasUncommittedChanges_Clean(t *testing.T) {
+	mainRepo, _, worktreeBase := setupRepoWithRemote(t)
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	// Create a clean worktree
+	wtPath, err := mgr.Create("clean-branch", "")
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if mgr.HasUncommittedChanges(wtPath) {
+		t.Error("clean worktree should not have uncommitted changes")
+	}
+}
+
+func TestHasUncommittedChanges_Modified(t *testing.T) {
+	mainRepo, _, worktreeBase := setupRepoWithRemote(t)
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	// Create worktree
+	wtPath, err := mgr.Create("modified-branch", "")
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Add an untracked file
+	testFile := filepath.Join(wtPath, "untracked.txt")
+	if err := os.WriteFile(testFile, []byte("untracked"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if !mgr.HasUncommittedChanges(wtPath) {
+		t.Error("worktree with untracked file should have uncommitted changes")
+	}
+}
+
+func TestHasUncommittedChanges_Staged(t *testing.T) {
+	mainRepo, _, worktreeBase := setupRepoWithRemote(t)
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	// Create worktree
+	wtPath, err := mgr.Create("staged-branch", "")
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Create and stage a file
+	testFile := filepath.Join(wtPath, "staged.txt")
+	if err := os.WriteFile(testFile, []byte("staged"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "add", "staged.txt")
+	cmd.Dir = wtPath
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add failed: %v\n%s", err, out)
+	}
+
+	if !mgr.HasUncommittedChanges(wtPath) {
+		t.Error("worktree with staged file should have uncommitted changes")
+	}
+}
