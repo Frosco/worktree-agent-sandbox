@@ -101,12 +101,17 @@ func (m *Manager) HasUnpushedCommits(branch string) bool {
 }
 
 // DeleteBranch deletes a local branch.
+// If force is true, uses -D (force delete) which deletes even if not fully merged.
 // Returns an error if the branch doesn't exist or can't be deleted.
-func (m *Manager) DeleteBranch(branch string) error {
-	cmd := exec.Command("git", "branch", "-d", branch)
+func (m *Manager) DeleteBranch(branch string, force bool) error {
+	flag := "-d"
+	if force {
+		flag = "-D"
+	}
+	cmd := exec.Command("git", "branch", flag, branch)
 	cmd.Dir = m.RepoRoot
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git branch -d: %w: %s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("git branch %s: %w: %s", flag, err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }

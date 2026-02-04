@@ -641,8 +641,8 @@ func TestDeleteBranch(t *testing.T) {
 		t.Fatal("branch should exist before delete")
 	}
 
-	// Delete the branch
-	err := mgr.DeleteBranch("branch-to-delete")
+	// Delete the branch (not force - branch has no commits ahead of master)
+	err := mgr.DeleteBranch("branch-to-delete", false)
 	if err != nil {
 		t.Fatalf("DeleteBranch failed: %v", err)
 	}
@@ -657,7 +657,7 @@ func TestDeleteBranch_NotFound(t *testing.T) {
 	mainRepo, _, worktreeBase := setupRepoWithRemote(t)
 	mgr := NewManager(mainRepo, worktreeBase)
 
-	err := mgr.DeleteBranch("nonexistent-branch")
+	err := mgr.DeleteBranch("nonexistent-branch", false)
 	if err == nil {
 		t.Error("expected error for nonexistent branch")
 	}
