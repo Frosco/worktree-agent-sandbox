@@ -34,6 +34,10 @@ wt new feature-branch
 # Creates worktree at ~/.local/share/wt/worktrees/<repo>/feature-branch
 # Copies configured files from main worktree
 # cd's into the new worktree (via shell function)
+
+wt new feature-branch -b develop
+# Creates feature-branch based on develop instead of HEAD
+# Fetches from origin if develop isn't available locally
 ```
 
 ### Switch to a worktree
