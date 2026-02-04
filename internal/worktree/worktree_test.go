@@ -528,3 +528,54 @@ func TestMergeBack_MergesDirectory(t *testing.T) {
 		t.Errorf("templates/new.txt not merged correctly: %v", err)
 	}
 }
+
+func TestManager_Remove_Force(t *testing.T) {
+	mainRepo, _, worktreeBase := setupRepoWithRemote(t)
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	// Create worktree
+	wtPath, err := mgr.Create("dirty-branch", "")
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Make worktree dirty (uncommitted changes)
+	testFile := filepath.Join(wtPath, "dirty.txt")
+	if err := os.WriteFile(testFile, []byte("uncommitted"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Force remove should succeed
+	err = mgr.Remove("dirty-branch", true)
+	if err != nil {
+		t.Errorf("Remove with force=true should succeed on dirty worktree: %v", err)
+	}
+
+	// Verify worktree is gone
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Error("worktree should be removed")
+	}
+}
+
+func TestManager_Remove_NoForce_DirtyFails(t *testing.T) {
+	mainRepo, _, worktreeBase := setupRepoWithRemote(t)
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	// Create worktree
+	wtPath, err := mgr.Create("dirty-branch-2", "")
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Make worktree dirty (uncommitted changes)
+	testFile := filepath.Join(wtPath, "dirty.txt")
+	if err := os.WriteFile(testFile, []byte("uncommitted"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Non-force remove should fail on dirty worktree
+	err = mgr.Remove("dirty-branch-2", false)
+	if err == nil {
+		t.Error("Remove with force=false should fail on dirty worktree")
+	}
+}

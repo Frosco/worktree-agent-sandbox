@@ -315,7 +315,7 @@ func TestRemoveWorktree(t *testing.T) {
 
 	// Create and remove
 	wtPath, _ := wt.Create("feature-x", "")
-	if err := wt.Remove("feature-x"); err != nil {
+	if err := wt.Remove("feature-x", false); err != nil {
 		t.Fatalf("Remove failed: %v", err)
 	}
 

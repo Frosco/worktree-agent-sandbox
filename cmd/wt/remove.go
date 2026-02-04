@@ -113,7 +113,7 @@ var removeCmd = &cobra.Command{
 			}
 		}
 
-		if err := mgr.Remove(branch); err != nil {
+		if err := mgr.Remove(branch, removeForce); err != nil {
 			return err
 		}
 

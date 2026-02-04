@@ -165,15 +165,22 @@ func (m *Manager) List() ([]WorktreeInfo, error) {
 	return worktrees, nil
 }
 
-// Remove removes a worktree by branch name
-func (m *Manager) Remove(branch string) error {
+// Remove removes a worktree by branch name.
+// If force is true, removes even if worktree has uncommitted changes.
+func (m *Manager) Remove(branch string, force bool) error {
 	wtPath := m.WorktreePath(branch)
 
 	if !m.Exists(branch) {
 		return ErrWorktreeNotFound
 	}
 
-	cmd := exec.Command("git", "worktree", "remove", wtPath)
+	args := []string{"worktree", "remove"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, wtPath)
+
+	cmd := exec.Command("git", args...)
 	cmd.Dir = m.RepoRoot
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git worktree remove: %w: %s", err, strings.TrimSpace(string(out)))
