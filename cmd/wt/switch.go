@@ -96,7 +96,7 @@ The branch must exist locally or on origin. Use 'wt new' to create a new branch.
 		}
 		cfg := config.MergeConfigs(globalCfg, repoCfg)
 
-		wtPath, err := mgr.Create(branch)
+		wtPath, err := mgr.Create(branch, "")
 		if err != nil {
 			return err
 		}

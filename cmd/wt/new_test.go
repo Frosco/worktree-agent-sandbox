@@ -342,8 +342,8 @@ func TestListCommand(t *testing.T) {
 
 	// Create some worktrees first
 	mgr := worktree.NewManager(repoDir, worktreeBase)
-	mgr.Create("feature-a")
-	mgr.Create("feature-b")
+	mgr.Create("feature-a", "")
+	mgr.Create("feature-b", "")
 
 	buf := new(bytes.Buffer)
 	rootCmd.SetOut(buf)
@@ -375,7 +375,7 @@ func TestRemoveCommand(t *testing.T) {
 
 	// Create a worktree
 	mgr := worktree.NewManager(repoDir, worktreeBase)
-	wtPath, _ := mgr.Create("feature-remove")
+	wtPath, _ := mgr.Create("feature-remove", "")
 
 	buf := new(bytes.Buffer)
 	rootCmd.SetOut(buf)

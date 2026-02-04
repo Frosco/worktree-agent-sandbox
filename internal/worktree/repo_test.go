@@ -173,7 +173,7 @@ func TestCreateWorktree(t *testing.T) {
 		WorktreeBase: worktreeBase,
 	}
 
-	wtPath, err := wt.Create("feature-x")
+	wtPath, err := wt.Create("feature-x", "")
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -226,12 +226,12 @@ func TestCreateWorktreeAlreadyExists(t *testing.T) {
 	}
 
 	// Create first time
-	if _, err := wt.Create("feature-x"); err != nil {
+	if _, err := wt.Create("feature-x", ""); err != nil {
 		t.Fatalf("first Create failed: %v", err)
 	}
 
 	// Second create should fail
-	_, err := wt.Create("feature-x")
+	_, err := wt.Create("feature-x", "")
 	if err == nil {
 		t.Error("expected error for existing worktree")
 	}
@@ -270,8 +270,8 @@ func TestListWorktrees(t *testing.T) {
 	}
 
 	// Create two worktrees
-	wt.Create("feature-a")
-	wt.Create("feature-b")
+	wt.Create("feature-a", "")
+	wt.Create("feature-b", "")
 
 	list, err := wt.List()
 	if err != nil {
@@ -314,7 +314,7 @@ func TestRemoveWorktree(t *testing.T) {
 	}
 
 	// Create and remove
-	wtPath, _ := wt.Create("feature-x")
+	wtPath, _ := wt.Create("feature-x", "")
 	if err := wt.Remove("feature-x"); err != nil {
 		t.Fatalf("Remove failed: %v", err)
 	}
@@ -362,7 +362,7 @@ func TestCopyConfigFiles(t *testing.T) {
 		WorktreeBase: worktreeBase,
 	}
 
-	wtPath, _ := wt.Create("feature-x")
+	wtPath, _ := wt.Create("feature-x", "")
 
 	// Copy files
 	filesToCopy := []string{"CLAUDE.md", "mise.local.toml", "nonexistent.txt"}
@@ -423,7 +423,7 @@ func TestDetectConfigChanges(t *testing.T) {
 		WorktreeBase: worktreeBase,
 	}
 
-	wtPath, _ := wt.Create("feature-x")
+	wtPath, _ := wt.Create("feature-x", "")
 	wt.CopyFiles(wtPath, []string{"CLAUDE.md", "unchanged.txt"})
 
 	// Modify one file in worktree
@@ -477,7 +477,7 @@ func TestDetectConflict(t *testing.T) {
 		WorktreeBase: worktreeBase,
 	}
 
-	wtPath, _ := wt.Create("feature-x")
+	wtPath, _ := wt.Create("feature-x", "")
 	wt.CopyFiles(wtPath, []string{"CLAUDE.md"})
 
 	// Modify in both places - add small delay to ensure distinct timestamps
@@ -532,7 +532,7 @@ func TestMergeBack(t *testing.T) {
 		WorktreeBase: worktreeBase,
 	}
 
-	wtPath, _ := wt.Create("feature-x")
+	wtPath, _ := wt.Create("feature-x", "")
 	wt.CopyFiles(wtPath, []string{"CLAUDE.md"})
 
 	// Modify file in worktree

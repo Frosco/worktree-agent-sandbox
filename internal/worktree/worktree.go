@@ -70,10 +70,12 @@ func (m *Manager) FetchBranch(branch string) error {
 }
 
 // Create creates a new worktree for the given branch.
-// If the branch exists locally, uses it directly.
-// If the branch exists only on origin, creates a local tracking branch.
-// If the branch doesn't exist anywhere, creates a new branch.
-func (m *Manager) Create(branch string) (string, error) {
+// If baseBranch is specified, creates a new branch based on it.
+// If baseBranch is empty:
+//   - If the branch exists locally, uses it directly.
+//   - If the branch exists only on origin, creates a local tracking branch.
+//   - If the branch doesn't exist anywhere, creates a new branch from HEAD.
+func (m *Manager) Create(branch, baseBranch string) (string, error) {
 	wtPath := m.WorktreePath(branch)
 
 	if m.Exists(branch) {
@@ -85,6 +87,28 @@ func (m *Manager) Create(branch string) (string, error) {
 		return "", err
 	}
 
+	// If base branch specified, resolve it and create new branch based on it
+	if baseBranch != "" {
+		baseRef := baseBranch
+		if !m.BranchExists(baseBranch) {
+			// Try to fetch from origin
+			if err := m.FetchBranch(baseBranch); err != nil {
+				return "", ErrBaseBranchNotFound
+			}
+			if !m.RemoteBranchExists(baseBranch) {
+				return "", ErrBaseBranchNotFound
+			}
+			baseRef = "origin/" + baseBranch
+		}
+		cmd := exec.Command("git", "worktree", "add", "-b", branch, wtPath, baseRef)
+		cmd.Dir = m.RepoRoot
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+		return wtPath, nil
+	}
+
+	// No base branch - use existing behavior
 	localExists := m.BranchExists(branch)
 	remoteExists := m.RemoteBranchExists(branch)
 

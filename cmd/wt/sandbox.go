@@ -67,7 +67,7 @@ var sandboxCmd = &cobra.Command{
 				wtPath = mgr.WorktreePath(branch)
 			} else {
 				var err error
-				wtPath, err = mgr.Create(branch)
+				wtPath, err = mgr.Create(branch, "")
 				if err != nil {
 					return err
 				}

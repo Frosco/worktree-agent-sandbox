@@ -59,7 +59,7 @@ var newCmd = &cobra.Command{
 
 		// Create worktree
 		mgr := worktree.NewManager(repoRoot, worktreeBase)
-		wtPath, err := mgr.Create(branch)
+		wtPath, err := mgr.Create(branch, "")
 		if err != nil {
 			if errors.Is(err, worktree.ErrWorktreeExists) {
 				return fmt.Errorf("worktree already exists, use 'wt switch %s' instead", branch)
