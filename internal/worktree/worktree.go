@@ -14,6 +14,7 @@ import (
 var ErrWorktreeExists = errors.New("worktree already exists")
 var ErrWorktreeNotFound = errors.New("worktree does not exist")
 var ErrBranchNotFound = errors.New("branch does not exist")
+var ErrBaseBranchNotFound = errors.New("base branch not found")
 
 // Manager handles worktree operations for a repository
 type Manager struct {
