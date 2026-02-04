@@ -794,3 +794,66 @@ func TestHasUnpushedCommits_NoUpstream(t *testing.T) {
 		t.Error("branch with no upstream should return false")
 	}
 }
+
+func TestFetchPrune(t *testing.T) {
+	mainRepo, bareRemote, worktreeBase := setupRepoWithRemote(t)
+
+	// Create a branch from another clone and push it
+	tmpClone := filepath.Join(t.TempDir(), "tmpclone")
+	cmd := exec.Command("git", "clone", bareRemote, tmpClone)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("clone failed: %v\n%s", err, out)
+	}
+
+	cmds := [][]string{
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "checkout", "-b", "to-be-deleted"},
+		{"git", "commit", "--allow-empty", "-m", "temp commit"},
+		{"git", "push", "-u", "origin", "to-be-deleted"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = tmpClone
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	// Fetch in main repo so it knows about the branch
+	cmd = exec.Command("git", "fetch", "origin")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("fetch failed: %v\n%s", err, out)
+	}
+
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	// Verify remote branch is known
+	if !mgr.RemoteBranchExists("to-be-deleted") {
+		t.Fatal("remote branch should exist before delete")
+	}
+
+	// Delete the branch on remote
+	cmd = exec.Command("git", "push", "origin", "--delete", "to-be-deleted")
+	cmd.Dir = tmpClone
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("push delete failed: %v\n%s", err, out)
+	}
+
+	// Without fetch --prune, main repo still thinks branch exists
+	if !mgr.RemoteBranchExists("to-be-deleted") {
+		t.Fatal("stale remote ref should still exist before FetchPrune")
+	}
+
+	// Run FetchPrune
+	err := mgr.FetchPrune()
+	if err != nil {
+		t.Fatalf("FetchPrune failed: %v", err)
+	}
+
+	// Now the stale remote ref should be gone
+	if mgr.RemoteBranchExists("to-be-deleted") {
+		t.Error("remote ref should be pruned after FetchPrune")
+	}
+}

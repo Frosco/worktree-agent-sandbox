@@ -436,6 +436,16 @@ func (m *Manager) detectDirChanges(srcDir, dstDir, baseFile string) ([]FileChang
 	return changes, err
 }
 
+// FetchPrune fetches from origin and prunes stale remote-tracking refs.
+func (m *Manager) FetchPrune() error {
+	cmd := exec.Command("git", "fetch", "--prune", "origin")
+	cmd.Dir = m.RepoRoot
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git fetch --prune origin: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 // MergeBack copies a file or directory from worktree back to source repo
 func (m *Manager) MergeBack(wtPath, file string) error {
 	srcPath := filepath.Join(wtPath, file)
