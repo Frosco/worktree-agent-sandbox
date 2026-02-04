@@ -347,3 +347,153 @@ func TestPrune_MultipleWorktrees(t *testing.T) {
 		t.Error("keep-c worktree should still exist")
 	}
 }
+
+func TestPrune_NoFetch_UsesStaleRefs(t *testing.T) {
+	repoDir, worktreeBase, bareRemote := setupTestRepoWithRemote(t)
+
+	// Create a branch, push it, create worktree
+	cmds := [][]string{
+		{"git", "checkout", "-b", "stale-branch"},
+		{"git", "commit", "--allow-empty", "-m", "stale commit"},
+		{"git", "push", "-u", "origin", "stale-branch"},
+		{"git", "checkout", "master"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	// Create worktree
+	mgr := worktree.NewManager(repoDir, worktreeBase)
+	_, err := mgr.Create("stale-branch", "")
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Delete branch from remote using a separate clone (so local doesn't know)
+	tmpClone := t.TempDir()
+	cmd := exec.Command("git", "clone", bareRemote, tmpClone)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("clone failed: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "push", "origin", "--delete", "stale-branch")
+	cmd.Dir = tmpClone
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("push delete failed: %v\n%s", err, out)
+	}
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+		pruneDryRun = false
+		pruneNoFetch = false
+		pruneForce = false
+		pruneSkipChanges = false
+	}()
+
+	// With --no-fetch, the local repo still thinks remote branch exists
+	rootCmd.SetArgs([]string{"prune", "--dry-run", "--no-fetch",
+		"--worktree-base", worktreeBase,
+	})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("prune failed: %v\n%s", err, buf.String())
+	}
+
+	output := buf.String()
+	// With stale refs, should say nothing to prune (remote ref still appears to exist)
+	if !strings.Contains(output, "Nothing to prune") {
+		t.Errorf("with --no-fetch and stale refs, should say nothing to prune, got: %s", output)
+	}
+
+	// Worktree should still exist
+	if !mgr.Exists("stale-branch") {
+		t.Error("worktree should still exist with --no-fetch")
+	}
+}
+
+func TestPrune_PromptsForUncommittedChanges(t *testing.T) {
+	repoDir, worktreeBase, _ := setupTestRepoWithRemote(t)
+
+	// Create a branch, push it, create worktree, then delete from remote
+	cmds := [][]string{
+		{"git", "checkout", "-b", "dirty-branch"},
+		{"git", "commit", "--allow-empty", "-m", "dirty commit"},
+		{"git", "push", "-u", "origin", "dirty-branch"},
+		{"git", "checkout", "master"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	// Create worktree
+	mgr := worktree.NewManager(repoDir, worktreeBase)
+	wtPath, err := mgr.Create("dirty-branch", "")
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Add uncommitted changes in the worktree
+	if err := os.WriteFile(wtPath+"/uncommitted.txt", []byte("uncommitted"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete branch from remote
+	cmd := exec.Command("git", "push", "origin", "--delete", "dirty-branch")
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("push delete failed: %v\n%s", err, out)
+	}
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+		pruneDryRun = false
+		pruneNoFetch = false
+		pruneForce = false
+		pruneSkipChanges = false
+	}()
+
+	// Without --force, should prompt about uncommitted changes
+	// Since we can't provide stdin input in tests, the read will fail
+	// But we can verify the prompt message appears in stdout
+	rootCmd.SetArgs([]string{"prune",
+		"--worktree-base", worktreeBase,
+		"--skip-changes", // Skip config change detection to isolate the test
+	})
+
+	// Execute will fail because stdin read fails, but check the output
+	_ = rootCmd.Execute()
+
+	output := buf.String()
+	// Should show prompt about uncommitted changes
+	if !strings.Contains(output, "uncommitted changes") {
+		t.Errorf("output should mention uncommitted changes, got: %s", output)
+	}
+	if !strings.Contains(output, "dirty-branch") {
+		t.Errorf("output should mention the branch name, got: %s", output)
+	}
+}

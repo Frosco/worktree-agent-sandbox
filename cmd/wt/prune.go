@@ -147,61 +147,27 @@ Prompts for worktrees with uncommitted changes or config file modifications.`,
 						continue
 					}
 
-					if len(changes) > 0 {
-						fmt.Fprintf(cmd.OutOrStdout(), "\n%s has modified config files:\n", branch)
-						for _, c := range changes {
-							conflict := ""
-							if c.Conflict {
-								conflict = " (CONFLICT: source also changed)"
+					action := HandleConfigChanges(changes, mgr, wtPath, cmd.OutOrStdout(), cmd.ErrOrStderr(), ConfigChangeOptions{
+						AllowSkip:  true,
+						BranchName: branch,
+						AbortLabel: "Abort prune",
+					})
+					switch action {
+					case ConfigChangeSkip:
+						fmt.Fprintf(cmd.OutOrStdout(), "Skipping %s\n", branch)
+						continue
+					case ConfigChangeAbort:
+						// Report what was already pruned before aborting
+						if len(pruned) > 0 {
+							fmt.Fprintf(cmd.OutOrStdout(), "\nPruned %d worktree(s) before abort:\n", len(pruned))
+							for _, p := range pruned {
+								fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", p)
 							}
-							fmt.Fprintf(cmd.OutOrStdout(), "  %s%s\n", c.File, conflict)
 						}
-						fmt.Fprintln(cmd.OutOrStdout())
-						fmt.Fprintln(cmd.OutOrStdout(), "[m] Merge back to main worktree")
-						fmt.Fprintln(cmd.OutOrStdout(), "[k] Keep original (discard changes)")
-						fmt.Fprintln(cmd.OutOrStdout(), "[s] Skip this worktree")
-						fmt.Fprintln(cmd.OutOrStdout(), "[a] Abort prune")
-						fmt.Fprint(cmd.OutOrStdout(), "Choice: ")
-
-						reader := bufio.NewReader(os.Stdin)
-						input, err := reader.ReadString('\n')
-						if err != nil {
-							errors = append(errors, fmt.Sprintf("%s: reading input: %v", branch, err))
-							continue
-						}
-						input = strings.TrimSpace(strings.ToLower(input))
-
-						switch input {
-						case "m":
-							for _, c := range changes {
-								if c.Conflict {
-									fmt.Fprintf(cmd.ErrOrStderr(), "Skipping %s due to conflict\n", c.File)
-									continue
-								}
-								if err := mgr.MergeBack(wtPath, c.File); err != nil {
-									fmt.Fprintf(cmd.ErrOrStderr(), "Failed to merge %s: %v\n", c.File, err)
-								} else {
-									fmt.Fprintf(cmd.OutOrStdout(), "Merged %s\n", c.File)
-								}
-							}
-						case "k":
-							// Continue with removal
-						case "s":
-							fmt.Fprintf(cmd.OutOrStdout(), "Skipping %s\n", branch)
-							continue
-						case "a":
-							// Report what was already pruned before aborting
-							if len(pruned) > 0 {
-								fmt.Fprintf(cmd.OutOrStdout(), "\nPruned %d worktree(s) before abort:\n", len(pruned))
-								for _, p := range pruned {
-									fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", p)
-								}
-							}
-							return fmt.Errorf("aborted")
-						default:
-							errors = append(errors, fmt.Sprintf("%s: invalid choice", branch))
-							continue
-						}
+						return fmt.Errorf("aborted")
+					case ConfigChangeError:
+						errors = append(errors, fmt.Sprintf("%s: invalid choice", branch))
+						continue
 					}
 				}
 			}

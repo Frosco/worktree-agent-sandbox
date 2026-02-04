@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/niref/wt/internal/config"
 	"github.com/niref/wt/internal/worktree"
@@ -68,48 +66,15 @@ var removeCmd = &cobra.Command{
 					return fmt.Errorf("detecting changes: %w", err)
 				}
 
-				if len(changes) > 0 {
-					fmt.Fprintln(cmd.OutOrStdout(), "These files were modified:")
-					for _, c := range changes {
-						conflict := ""
-						if c.Conflict {
-							conflict = " (CONFLICT: source also changed)"
-						}
-						fmt.Fprintf(cmd.OutOrStdout(), "  %s%s\n", c.File, conflict)
-					}
-					fmt.Fprintln(cmd.OutOrStdout())
-					fmt.Fprintln(cmd.OutOrStdout(), "[m] Merge back to main worktree")
-					fmt.Fprintln(cmd.OutOrStdout(), "[k] Keep original (discard changes)")
-					fmt.Fprintln(cmd.OutOrStdout(), "[a] Abort remove")
-					fmt.Fprint(cmd.OutOrStdout(), "Choice: ")
-
-					reader := bufio.NewReader(os.Stdin)
-					input, err := reader.ReadString('\n')
-					if err != nil {
-						return fmt.Errorf("reading input: %w", err)
-					}
-					input = strings.TrimSpace(strings.ToLower(input))
-
-					switch input {
-					case "m":
-						for _, c := range changes {
-							if c.Conflict {
-								fmt.Fprintf(cmd.ErrOrStderr(), "Skipping %s due to conflict\n", c.File)
-								continue
-							}
-							if err := mgr.MergeBack(wtPath, c.File); err != nil {
-								fmt.Fprintf(cmd.ErrOrStderr(), "Failed to merge %s: %v\n", c.File, err)
-							} else {
-								fmt.Fprintf(cmd.OutOrStdout(), "Merged %s\n", c.File)
-							}
-						}
-					case "k":
-						// Continue with removal
-					case "a":
-						return fmt.Errorf("aborted")
-					default:
-						return fmt.Errorf("invalid choice")
-					}
+				action := HandleConfigChanges(changes, mgr, wtPath, cmd.OutOrStdout(), cmd.ErrOrStderr(), ConfigChangeOptions{
+					AllowSkip:  false,
+					AbortLabel: "Abort remove",
+				})
+				switch action {
+				case ConfigChangeAbort:
+					return fmt.Errorf("aborted")
+				case ConfigChangeError:
+					return fmt.Errorf("invalid choice")
 				}
 			}
 		}
