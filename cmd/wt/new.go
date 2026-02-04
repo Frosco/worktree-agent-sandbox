@@ -14,6 +14,7 @@ var (
 	newPrintPath    bool
 	newWorktreeBase string
 	newConfigPath   string
+	newBaseBranch   string
 )
 
 var newCmd = &cobra.Command{
@@ -59,7 +60,15 @@ var newCmd = &cobra.Command{
 
 		// Create worktree
 		mgr := worktree.NewManager(repoRoot, worktreeBase)
-		wtPath, err := mgr.Create(branch)
+
+		// Validate -b flag usage
+		if newBaseBranch != "" {
+			if mgr.BranchExists(branch) || mgr.RemoteBranchExists(branch) {
+				return fmt.Errorf("branch '%s' already exists, cannot apply --base", branch)
+			}
+		}
+
+		wtPath, err := mgr.Create(branch, newBaseBranch)
 		if err != nil {
 			if errors.Is(err, worktree.ErrWorktreeExists) {
 				return fmt.Errorf("worktree already exists, use 'wt switch %s' instead", branch)
@@ -92,5 +101,6 @@ func init() {
 	newCmd.Flags().BoolVar(&newPrintPath, "print-path", false, "Only print the worktree path (for shell integration)")
 	newCmd.Flags().StringVar(&newWorktreeBase, "worktree-base", "", "Override worktree base directory")
 	newCmd.Flags().StringVar(&newConfigPath, "config", "", "Override global config path")
+	newCmd.Flags().StringVarP(&newBaseBranch, "base", "b", "", "Base branch for the new branch")
 	rootCmd.AddCommand(newCmd)
 }

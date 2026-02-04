@@ -342,8 +342,8 @@ func TestListCommand(t *testing.T) {
 
 	// Create some worktrees first
 	mgr := worktree.NewManager(repoDir, worktreeBase)
-	mgr.Create("feature-a")
-	mgr.Create("feature-b")
+	mgr.Create("feature-a", "")
+	mgr.Create("feature-b", "")
 
 	buf := new(bytes.Buffer)
 	rootCmd.SetOut(buf)
@@ -375,7 +375,7 @@ func TestRemoveCommand(t *testing.T) {
 
 	// Create a worktree
 	mgr := worktree.NewManager(repoDir, worktreeBase)
-	wtPath, _ := mgr.Create("feature-remove")
+	wtPath, _ := mgr.Create("feature-remove", "")
 
 	buf := new(bytes.Buffer)
 	rootCmd.SetOut(buf)
@@ -397,5 +397,100 @@ func TestRemoveCommand(t *testing.T) {
 	// Verify worktree is gone
 	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
 		t.Error("worktree should be removed")
+	}
+}
+
+func TestNewCommandWithBaseBranch(t *testing.T) {
+	repoDir, worktreeBase := setupTestRepo(t)
+
+	// Create a develop branch
+	cmd := exec.Command("git", "checkout", "-b", "develop")
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("create develop failed: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "commit", "--allow-empty", "-m", "develop commit")
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("commit failed: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "checkout", "master")
+	cmd.Dir = repoDir
+	cmd.CombinedOutput() // ignore error
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	rootCmd.SetArgs([]string{"new", "feature-from-base", "-b", "develop",
+		"--worktree-base", worktreeBase,
+		"--print-path",
+	})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("new command failed: %v\n%s", err, buf.String())
+	}
+
+	expectedPath := filepath.Join(worktreeBase, "myrepo", "feature-from-base")
+	output := strings.TrimSpace(buf.String())
+	if output != expectedPath {
+		t.Errorf("expected %s, got %s", expectedPath, output)
+	}
+
+	// Verify branch is based on develop
+	cmd = exec.Command("git", "log", "-1", "--format=%s", "HEAD")
+	cmd.Dir = expectedPath
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log failed: %v\n%s", err, out)
+	}
+	if strings.TrimSpace(string(out)) != "develop commit" {
+		t.Errorf("expected based on develop, got: %s", out)
+	}
+}
+
+func TestNewCommandBaseBranchWithExistingBranch(t *testing.T) {
+	repoDir, worktreeBase := setupTestRepo(t)
+
+	// Create a branch that already exists
+	cmd := exec.Command("git", "branch", "existing-branch")
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("create branch failed: %v\n%s", err, out)
+	}
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	// Try to create worktree with -b for an existing branch
+	rootCmd.SetArgs([]string{"new", "existing-branch", "-b", "master",
+		"--worktree-base", worktreeBase,
+	})
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when using -b with existing branch")
+	}
+	if !strings.Contains(err.Error(), "already exists") || !strings.Contains(err.Error(), "--base") {
+		t.Errorf("error should mention branch exists and --base cannot be applied, got: %v", err)
 	}
 }
