@@ -170,3 +170,57 @@ func TestCreateWorktreeForRemoteBranch(t *testing.T) {
 		t.Errorf("expected remote 'origin', got %q", remote)
 	}
 }
+
+func TestFetchBranch(t *testing.T) {
+	mainRepo, bareRemote, worktreeBase := setupRepoWithRemote(t)
+
+	// Create a branch in a separate clone and push it (without fetching in mainRepo)
+	tmpClone := filepath.Join(t.TempDir(), "tmpclone")
+	cmd := exec.Command("git", "clone", bareRemote, tmpClone)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("clone failed: %v\n%s", err, out)
+	}
+
+	cmds := [][]string{
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "checkout", "-b", "unfetched-branch"},
+		{"git", "commit", "--allow-empty", "-m", "unfetched commit"},
+		{"git", "push", "-u", "origin", "unfetched-branch"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = tmpClone
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	// Branch should not be known locally yet
+	if mgr.RemoteBranchExists("unfetched-branch") {
+		t.Fatal("branch should not be known before fetch")
+	}
+
+	// Fetch the branch
+	err := mgr.FetchBranch("unfetched-branch")
+	if err != nil {
+		t.Fatalf("FetchBranch failed: %v", err)
+	}
+
+	// Now it should be known
+	if !mgr.RemoteBranchExists("unfetched-branch") {
+		t.Error("branch should exist after fetch")
+	}
+}
+
+func TestFetchBranchNotFound(t *testing.T) {
+	mainRepo, _, worktreeBase := setupRepoWithRemote(t)
+	mgr := NewManager(mainRepo, worktreeBase)
+
+	err := mgr.FetchBranch("nonexistent-branch")
+	if err == nil {
+		t.Fatal("expected error for nonexistent branch")
+	}
+}

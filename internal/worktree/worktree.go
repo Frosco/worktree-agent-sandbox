@@ -57,6 +57,17 @@ func (m *Manager) RemoteBranchExists(branch string) bool {
 	return cmd.Run() == nil
 }
 
+// FetchBranch fetches a specific branch from origin.
+// Returns an error if the branch doesn't exist on the remote.
+func (m *Manager) FetchBranch(branch string) error {
+	cmd := exec.Command("git", "fetch", "origin", branch)
+	cmd.Dir = m.RepoRoot
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git fetch origin %s: %w: %s", branch, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 // Create creates a new worktree for the given branch.
 // If the branch exists locally, uses it directly.
 // If the branch exists only on origin, creates a local tracking branch.
