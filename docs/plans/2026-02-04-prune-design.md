@@ -27,7 +27,7 @@
    c. If either: prompt "Remove <branch>? It has <issue> [y/n]"
    d. Run config change detection (same as `wt remove`)
    e. Remove worktree via `mgr.Remove()`
-   f. Delete local branch via `git branch -d <branch>`
+   f. Delete local branch via `git branch -D <branch>` (force delete required since upstream is gone)
 6. Print summary with branch names:
    ```
    Pruned 3 worktrees:
@@ -58,8 +58,11 @@ The `--force` and `--skip-changes` flags mirror `wt remove` for consistency.
 // BranchUpstream returns the upstream ref for a branch, or empty string if none
 func (m *Manager) BranchUpstream(branch string) string
 
-// DeleteBranch deletes a local branch
-func (m *Manager) DeleteBranch(branch string) error
+// DeleteBranch deletes a local branch (force=true uses -D, force=false uses -d)
+func (m *Manager) DeleteBranch(branch string, force bool) error
+
+// FetchPrune fetches from origin and prunes stale remote-tracking refs
+func (m *Manager) FetchPrune() error
 
 // HasUnpushedCommits checks if branch has commits not on its upstream
 func (m *Manager) HasUnpushedCommits(branch string) bool
