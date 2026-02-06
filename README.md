@@ -6,7 +6,7 @@ A CLI tool to manage git worktrees with automatic config file copying and Podman
 
 - Create and switch between git worktrees with a single command
 - Automatically copy gitignored config files (like `CLAUDE.md`, `mise.local.toml`) to new worktrees
-- Detect changes in config files when removing worktrees and offer to merge them back
+- Detect changes in config files when removing worktrees and offer to merge them back (three-way merge via [mergiraf](https://mergiraf.org) when available, falls back to copy)
 - Prune stale worktrees whose branches were deleted from remote
 - Run Claude Code in a sandboxed Podman container with `--dangerously-skip-permissions`
 - Shell integration for seamless `cd` into worktrees
@@ -125,11 +125,15 @@ extra_mounts = ["~/work/common-deps"]
 Worktrees are stored in XDG-compliant locations:
 
 ```
-~/.local/share/wt/worktrees/
-└── <repo-name>/
-    ├── feature-a/
-    ├── feature-b/
-    └── bugfix-123/
+~/.local/share/wt/
+├── worktrees/
+│   └── <repo-name>/
+│       ├── feature-a/
+│       ├── feature-b/
+│       └── bugfix-123/
+└── snapshots/
+    └── <repo-name>/
+        └── feature-a/       # merge base for three-way merge
 ```
 
 ## Development
@@ -153,6 +157,7 @@ go install golang.org/x/tools/cmd/goimports@latest
 - Go 1.21+
 - Git
 - Podman (for sandbox feature)
+- [mergiraf](https://mergiraf.org) (optional, for three-way merge of config files)
 
 ## License
 
