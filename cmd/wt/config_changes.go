@@ -92,15 +92,16 @@ func HandleConfigChanges(
 	switch input {
 	case "m":
 		for _, c := range changes {
-			if c.Conflict {
-				fmt.Fprintf(stderr, "Skipping %s due to conflict\n", c.File)
-				continue
-			}
 			result := mgr.MergeBack(wtPath, c.File, branch)
-			if result.Err != nil {
+			switch result.Status {
+			case worktree.MergeStatusMerged:
+				fmt.Fprintf(stdout, "Merged %s (3-way)\n", c.File)
+			case worktree.MergeStatusConflict:
+				fmt.Fprintf(stderr, "Kept main version of %s (conflict)\n", c.File)
+			case worktree.MergeStatusCopied:
+				fmt.Fprintf(stdout, "Copied %s\n", c.File)
+			case worktree.MergeStatusError:
 				fmt.Fprintf(stderr, "Failed to merge %s: %v\n", c.File, result.Err)
-			} else {
-				fmt.Fprintf(stdout, "Merged %s\n", c.File)
 			}
 		}
 		return ConfigChangeContinue
