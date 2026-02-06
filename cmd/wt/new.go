@@ -85,6 +85,11 @@ var newCmd = &cobra.Command{
 			if !newPrintPath && len(copied) > 0 {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Copied: %v\n", copied)
 			}
+
+			// Save snapshots for three-way merge on remove/prune
+			if err := mgr.SaveSnapshot(branch, cfg.CopyFiles); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to save snapshots: %v\n", err)
+			}
 		}
 
 		if newPrintPath {

@@ -495,6 +495,64 @@ func TestNewCommandBaseBranchWithExistingBranch(t *testing.T) {
 	}
 }
 
+func TestNewCommand_SavesSnapshot(t *testing.T) {
+	repoDir, worktreeBase := setupTestRepo(t)
+
+	// Create files to copy
+	os.WriteFile(filepath.Join(repoDir, "CLAUDE.md"), []byte("# Claude"), 0644)
+	os.MkdirAll(filepath.Join(repoDir, ".claude"), 0755)
+	os.WriteFile(filepath.Join(repoDir, ".claude", "settings.json"), []byte(`{"key":"val"}`), 0644)
+
+	// Create config
+	configDir := filepath.Join(t.TempDir(), "config", "wt")
+	os.MkdirAll(configDir, 0755)
+	configPath := filepath.Join(configDir, "config.toml")
+	os.WriteFile(configPath, []byte(`copy_files = ["CLAUDE.md", ".claude"]`), 0644)
+
+	origDir, _ := os.Getwd()
+	os.Chdir(repoDir)
+	defer os.Chdir(origDir)
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	defer func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	rootCmd.SetArgs([]string{"new", "snapshot-test",
+		"--worktree-base", worktreeBase,
+		"--config", configPath,
+		"--print-path",
+	})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("new command failed: %v\n%s", err, buf.String())
+	}
+
+	// Verify snapshots were created
+	mgr := worktree.NewManager(repoDir, worktreeBase)
+	snapshotDir := mgr.SnapshotPath("snapshot-test")
+
+	content, err := os.ReadFile(filepath.Join(snapshotDir, "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("snapshot not created for CLAUDE.md: %v", err)
+	}
+	if string(content) != "# Claude" {
+		t.Errorf("snapshot content mismatch: %s", content)
+	}
+
+	content, err = os.ReadFile(filepath.Join(snapshotDir, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatalf("snapshot not created for .claude/settings.json: %v", err)
+	}
+	if string(content) != `{"key":"val"}` {
+		t.Errorf("snapshot content mismatch: %s", content)
+	}
+}
+
 func TestRemoveForce_DirtyWorktree(t *testing.T) {
 	repoDir, worktreeBase := setupTestRepo(t)
 
