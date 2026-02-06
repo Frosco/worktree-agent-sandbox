@@ -541,8 +541,9 @@ func TestMergeBack(t *testing.T) {
 	}
 
 	// Merge back
-	if err := wt.MergeBack(wtPath, "CLAUDE.md"); err != nil {
-		t.Fatalf("MergeBack failed: %v", err)
+	result := wt.MergeBack(wtPath, "CLAUDE.md", "feature-x")
+	if result.Err != nil {
+		t.Fatalf("MergeBack failed: %v", result.Err)
 	}
 
 	// Verify source file has worktree content

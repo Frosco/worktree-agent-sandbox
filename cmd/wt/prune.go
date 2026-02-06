@@ -147,7 +147,7 @@ Prompts for worktrees with uncommitted changes or config file modifications.`,
 						continue
 					}
 
-					action := HandleConfigChanges(changes, mgr, wtPath, cmd.OutOrStdout(), cmd.ErrOrStderr(), ConfigChangeOptions{
+					action := HandleConfigChanges(changes, mgr, wtPath, branch, cmd.OutOrStdout(), cmd.ErrOrStderr(), ConfigChangeOptions{
 						AllowSkip:  true,
 						BranchName: branch,
 						AbortLabel: "Abort prune",

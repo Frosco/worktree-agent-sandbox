@@ -41,6 +41,7 @@ func HandleConfigChanges(
 	changes []worktree.FileChange,
 	mgr *worktree.Manager,
 	wtPath string,
+	branch string,
 	stdout io.Writer,
 	stderr io.Writer,
 	opts ConfigChangeOptions,
@@ -95,8 +96,9 @@ func HandleConfigChanges(
 				fmt.Fprintf(stderr, "Skipping %s due to conflict\n", c.File)
 				continue
 			}
-			if err := mgr.MergeBack(wtPath, c.File); err != nil {
-				fmt.Fprintf(stderr, "Failed to merge %s: %v\n", c.File, err)
+			result := mgr.MergeBack(wtPath, c.File, branch)
+			if result.Err != nil {
+				fmt.Fprintf(stderr, "Failed to merge %s: %v\n", c.File, result.Err)
 			} else {
 				fmt.Fprintf(stdout, "Merged %s\n", c.File)
 			}

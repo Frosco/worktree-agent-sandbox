@@ -66,7 +66,7 @@ var removeCmd = &cobra.Command{
 					return fmt.Errorf("detecting changes: %w", err)
 				}
 
-				action := HandleConfigChanges(changes, mgr, wtPath, cmd.OutOrStdout(), cmd.ErrOrStderr(), ConfigChangeOptions{
+				action := HandleConfigChanges(changes, mgr, wtPath, branch, cmd.OutOrStdout(), cmd.ErrOrStderr(), ConfigChangeOptions{
 					AllowSkip:  false,
 					AbortLabel: "Abort remove",
 				})

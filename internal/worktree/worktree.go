@@ -390,6 +390,22 @@ type FileChange struct {
 	Conflict bool // true if source also changed
 }
 
+// MergeStatus indicates the result of a merge-back operation
+type MergeStatus int
+
+const (
+	MergeStatusCopied   MergeStatus = iota // Plain copy (no snapshot or mergiraf unavailable)
+	MergeStatusMerged                      // Successful three-way merge
+	MergeStatusConflict                    // Three-way merge had conflicts, main version kept
+	MergeStatusError                       // I/O or other error occurred
+)
+
+// MergeResult describes the outcome of a merge-back operation
+type MergeResult struct {
+	Status MergeStatus
+	Err    error
+}
+
 // DetectChanges checks if config files or directories in worktree differ from source.
 // Also detects conflicts where source changed too.
 func (m *Manager) DetectChanges(wtPath string, files []string) ([]FileChange, error) {
@@ -506,23 +522,63 @@ func (m *Manager) FetchPrune() error {
 	return nil
 }
 
-// MergeBack copies a file or directory from worktree back to source repo
-func (m *Manager) MergeBack(wtPath, file string) error {
+// MergeBack merges a file or directory from worktree back to the source repo.
+// When a snapshot exists and mergiraf is available, performs a three-way merge.
+// Otherwise falls back to a plain copy.
+func (m *Manager) MergeBack(wtPath, file, branch string) MergeResult {
 	srcPath := filepath.Join(wtPath, file)
 	dstPath := filepath.Join(m.RepoRoot, file)
 
 	srcInfo, err := os.Stat(srcPath)
 	if err != nil {
-		return err
+		return MergeResult{Status: MergeStatusError, Err: err}
 	}
 
+	// Directories always use copy
 	if srcInfo.IsDir() {
-		return copyDir(srcPath, dstPath)
+		if err := copyDir(srcPath, dstPath); err != nil {
+			return MergeResult{Status: MergeStatusError, Err: err}
+		}
+		return MergeResult{Status: MergeStatusCopied}
 	}
 
-	// Ensure destination directory exists
-	if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
-		return err
+	// Try three-way merge if snapshot exists and mergiraf is available
+	snapshotFile := filepath.Join(m.SnapshotPath(branch), file)
+	if _, err := os.Stat(snapshotFile); err == nil {
+		if mergirafPath, err := exec.LookPath("mergiraf"); err == nil {
+			return m.mergeThreeWay(mergirafPath, snapshotFile, dstPath, srcPath)
+		}
 	}
-	return copyFile(srcPath, dstPath)
+
+	// Fallback: plain copy
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+		return MergeResult{Status: MergeStatusError, Err: err}
+	}
+	if err := copyFile(srcPath, dstPath); err != nil {
+		return MergeResult{Status: MergeStatusError, Err: err}
+	}
+	return MergeResult{Status: MergeStatusCopied}
+}
+
+func (m *Manager) mergeThreeWay(mergirafPath, basePath, leftPath, rightPath string) MergeResult {
+	tmpFile, err := os.CreateTemp("", "wt-merge-*")
+	if err != nil {
+		return MergeResult{Status: MergeStatusError, Err: fmt.Errorf("creating temp file: %w", err)}
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpPath)
+
+	cmd := exec.Command(mergirafPath, "merge", basePath, leftPath, rightPath, "-o", tmpPath)
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			return MergeResult{Status: MergeStatusConflict}
+		}
+		return MergeResult{Status: MergeStatusError, Err: fmt.Errorf("mergiraf merge: %w", err)}
+	}
+
+	if err := copyFile(tmpPath, leftPath); err != nil {
+		return MergeResult{Status: MergeStatusError, Err: fmt.Errorf("writing merge result: %w", err)}
+	}
+	return MergeResult{Status: MergeStatusMerged}
 }

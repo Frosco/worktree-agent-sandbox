@@ -513,8 +513,9 @@ func TestMergeBack_MergesDirectory(t *testing.T) {
 	mgr := NewManager(repoRoot, worktreeBase)
 
 	// Merge back the directory
-	if err := mgr.MergeBack(wtPath, ".ai"); err != nil {
-		t.Fatalf("MergeBack failed: %v", err)
+	result := mgr.MergeBack(wtPath, ".ai", "feature-x")
+	if result.Err != nil {
+		t.Fatalf("MergeBack failed: %v", result.Err)
 	}
 
 	// Verify files were copied to repo root
@@ -982,5 +983,177 @@ func TestFetchPrune(t *testing.T) {
 	// Now the stale remote ref should be gone
 	if mgr.RemoteBranchExists("to-be-deleted") {
 		t.Error("remote ref should be pruned after FetchPrune")
+	}
+}
+
+func TestMergeBack_ThreeWayCleanMerge(t *testing.T) {
+	if _, err := exec.LookPath("mergiraf"); err != nil {
+		t.Skip("mergiraf not available")
+	}
+
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	wtPath := filepath.Join(tmpDir, "worktree")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	if err := os.MkdirAll(repoRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(wtPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	base := "line1\nline2\nline3\nline4\nline5\n"
+	left := "modified1\nline2\nline3\nline4\nline5\n"
+	right := "line1\nline2\nline3\nline4\nmodified5\n"
+
+	if err := os.WriteFile(filepath.Join(repoRoot, "config.txt"), []byte(base), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.SaveSnapshot("feature-x", []string{"config.txt"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(repoRoot, "config.txt"), []byte(left), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtPath, "config.txt"), []byte(right), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := mgr.MergeBack(wtPath, "config.txt", "feature-x")
+	if result.Status != MergeStatusMerged {
+		t.Errorf("expected MergeStatusMerged, got %v", result.Status)
+	}
+
+	content, err := os.ReadFile(filepath.Join(repoRoot, "config.txt"))
+	if err != nil {
+		t.Fatalf("failed to read merged file: %v", err)
+	}
+	expected := "modified1\nline2\nline3\nline4\nmodified5\n"
+	if string(content) != expected {
+		t.Errorf("merged content mismatch:\nexpected: %q\ngot:      %q", expected, string(content))
+	}
+}
+
+func TestMergeBack_ThreeWayConflict(t *testing.T) {
+	if _, err := exec.LookPath("mergiraf"); err != nil {
+		t.Skip("mergiraf not available")
+	}
+
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	wtPath := filepath.Join(tmpDir, "worktree")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	if err := os.MkdirAll(repoRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(wtPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	base := "line1\nline2\nline3\n"
+	left := "line1\nchanged_by_main\nline3\n"
+	right := "line1\nchanged_by_worktree\nline3\n"
+
+	if err := os.WriteFile(filepath.Join(repoRoot, "config.txt"), []byte(base), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.SaveSnapshot("feature-x", []string{"config.txt"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(repoRoot, "config.txt"), []byte(left), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtPath, "config.txt"), []byte(right), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := mgr.MergeBack(wtPath, "config.txt", "feature-x")
+	if result.Status != MergeStatusConflict {
+		t.Errorf("expected MergeStatusConflict, got %v", result.Status)
+	}
+
+	content, err := os.ReadFile(filepath.Join(repoRoot, "config.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != left {
+		t.Errorf("main version should be preserved on conflict, got: %q", string(content))
+	}
+}
+
+func TestMergeBack_FallbackNoSnapshot(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	wtPath := filepath.Join(tmpDir, "worktree")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	if err := os.MkdirAll(repoRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(wtPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	if err := os.WriteFile(filepath.Join(repoRoot, "config.txt"), []byte("main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtPath, "config.txt"), []byte("worktree"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := mgr.MergeBack(wtPath, "config.txt", "feature-x")
+	if result.Status != MergeStatusCopied {
+		t.Errorf("expected MergeStatusCopied (fallback), got %v", result.Status)
+	}
+
+	content, err := os.ReadFile(filepath.Join(repoRoot, "config.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "worktree" {
+		t.Errorf("expected 'worktree' (copy fallback), got: %q", string(content))
+	}
+}
+
+func TestMergeBack_DirectoryCopy(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	wtPath := filepath.Join(tmpDir, "worktree")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".ai"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(wtPath, ".ai"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(wtPath, ".ai", "config.json"), []byte("updated"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	result := mgr.MergeBack(wtPath, ".ai", "feature-x")
+	if result.Status != MergeStatusCopied {
+		t.Errorf("directory merge should use copy, got %v", result.Status)
+	}
+
+	content, err := os.ReadFile(filepath.Join(repoRoot, ".ai", "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "updated" {
+		t.Errorf("expected 'updated', got %q", string(content))
 	}
 }
