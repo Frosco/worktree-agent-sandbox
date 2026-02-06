@@ -329,6 +329,17 @@ func (m *Manager) SaveSnapshot(branch string, files []string) error {
 	return nil
 }
 
+// RemoveSnapshot deletes the snapshot directory for a branch.
+// Returns nil if the snapshot directory doesn't exist.
+func (m *Manager) RemoveSnapshot(branch string) error {
+	snapshotDir := m.SnapshotPath(branch)
+	err := os.RemoveAll(snapshotDir)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 func copyFile(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {

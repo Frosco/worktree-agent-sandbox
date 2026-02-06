@@ -870,6 +870,58 @@ func TestSaveSnapshot_SkipsNonexistent(t *testing.T) {
 	}
 }
 
+func TestRemoveSnapshot(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	if err := os.MkdirAll(repoRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, "CLAUDE.md"), []byte("# Claude"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	// Create snapshot
+	if err := mgr.SaveSnapshot("feature-x", []string{"CLAUDE.md"}); err != nil {
+		t.Fatalf("SaveSnapshot failed: %v", err)
+	}
+
+	snapshotDir := mgr.SnapshotPath("feature-x")
+	if _, err := os.Stat(snapshotDir); os.IsNotExist(err) {
+		t.Fatal("snapshot should exist before removal")
+	}
+
+	// Remove snapshot
+	if err := mgr.RemoveSnapshot("feature-x"); err != nil {
+		t.Fatalf("RemoveSnapshot failed: %v", err)
+	}
+
+	if _, err := os.Stat(snapshotDir); !os.IsNotExist(err) {
+		t.Error("snapshot directory should be removed")
+	}
+}
+
+func TestRemoveSnapshot_NonexistentIsNotError(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	if err := os.MkdirAll(repoRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	// Removing a nonexistent snapshot should not error
+	err := mgr.RemoveSnapshot("nonexistent")
+	if err != nil {
+		t.Errorf("RemoveSnapshot should not error on nonexistent: %v", err)
+	}
+}
+
 func TestFetchPrune(t *testing.T) {
 	mainRepo, bareRemote, worktreeBase := setupRepoWithRemote(t)
 
