@@ -795,6 +795,81 @@ func TestHasUnpushedCommits_NoUpstream(t *testing.T) {
 	}
 }
 
+func TestSnapshotPath(t *testing.T) {
+	mgr := &Manager{
+		RepoRoot:     "/repo",
+		RepoName:     "myrepo",
+		WorktreeBase: "/data/wt/worktrees",
+	}
+
+	got := mgr.SnapshotPath("feature-x")
+	expected := "/data/wt/snapshots/myrepo/feature-x"
+	if got != expected {
+		t.Errorf("expected %s, got %s", expected, got)
+	}
+}
+
+func TestSaveSnapshot(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	// Create repo with files
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".claude"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".claude", "settings.json"), []byte(`{"key":"val"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, "CLAUDE.md"), []byte("# Claude"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	err := mgr.SaveSnapshot("feature-x", []string{".claude", "CLAUDE.md", "nonexistent.txt"})
+	if err != nil {
+		t.Fatalf("SaveSnapshot failed: %v", err)
+	}
+
+	// Verify snapshot files exist
+	snapshotDir := mgr.SnapshotPath("feature-x")
+
+	content, err := os.ReadFile(filepath.Join(snapshotDir, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatalf("snapshot file not found: %v", err)
+	}
+	if string(content) != `{"key":"val"}` {
+		t.Errorf("snapshot content mismatch: %s", content)
+	}
+
+	content, err = os.ReadFile(filepath.Join(snapshotDir, "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("snapshot file not found: %v", err)
+	}
+	if string(content) != "# Claude" {
+		t.Errorf("snapshot content mismatch: %s", content)
+	}
+}
+
+func TestSaveSnapshot_SkipsNonexistent(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	if err := os.MkdirAll(repoRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	// Should not error on nonexistent files
+	err := mgr.SaveSnapshot("feature-x", []string{"nonexistent.txt"})
+	if err != nil {
+		t.Fatalf("SaveSnapshot should skip nonexistent files: %v", err)
+	}
+}
+
 func TestFetchPrune(t *testing.T) {
 	mainRepo, bareRemote, worktreeBase := setupRepoWithRemote(t)
 

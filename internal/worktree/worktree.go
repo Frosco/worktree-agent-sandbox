@@ -37,6 +37,14 @@ func (m *Manager) WorktreePath(branch string) string {
 	return filepath.Join(m.WorktreeBase, m.RepoName, branch)
 }
 
+// SnapshotPath returns the path where a branch's file snapshots are stored.
+// Snapshots live as a sibling to the worktrees directory:
+// WorktreeBase = ~/.local/share/wt/worktrees → snapshots at ~/.local/share/wt/snapshots/<repo>/<branch>
+func (m *Manager) SnapshotPath(branch string) string {
+	wtRoot := filepath.Dir(m.WorktreeBase) // ~/.local/share/wt
+	return filepath.Join(wtRoot, "snapshots", m.RepoName, branch)
+}
+
 // Exists checks if a worktree for the branch already exists
 func (m *Manager) Exists(branch string) bool {
 	wtPath := m.WorktreePath(branch)
@@ -283,6 +291,42 @@ func (m *Manager) CopyFiles(wtPath string, files []string) ([]string, error) {
 	}
 
 	return copied, nil
+}
+
+// SaveSnapshot saves a copy of config files from the repo root to the snapshot directory.
+// These snapshots serve as the base version for three-way merge when merging back.
+// Skips entries that don't exist in the source.
+func (m *Manager) SaveSnapshot(branch string, files []string) error {
+	snapshotDir := m.SnapshotPath(branch)
+
+	for _, file := range files {
+		srcPath := filepath.Join(m.RepoRoot, file)
+
+		srcInfo, err := os.Stat(srcPath)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+
+		dstPath := filepath.Join(snapshotDir, file)
+
+		if srcInfo.IsDir() {
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+				return err
+			}
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func copyFile(src, dst string) error {
