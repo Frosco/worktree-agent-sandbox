@@ -132,6 +132,22 @@ Worktrees are stored in XDG-compliant locations:
     └── bugfix-123/
 ```
 
+## Development
+
+### Git hooks
+
+Pre-commit hooks live in `.githooks/` and check `goimports` formatting and `go vet`. To enable them after cloning:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Requires [`goimports`](https://pkg.go.dev/golang.org/x/tools/cmd/goimports):
+
+```bash
+go install golang.org/x/tools/cmd/goimports@latest
+```
+
 ## Requirements
 
 - Go 1.21+
