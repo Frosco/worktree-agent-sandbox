@@ -83,6 +83,11 @@ var removeCmd = &cobra.Command{
 			return err
 		}
 
+		// Clean up snapshots
+		if err := mgr.RemoveSnapshot(branch); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to remove snapshots: %v\n", err)
+		}
+
 		fmt.Fprintf(cmd.OutOrStdout(), "Removed worktree '%s'\n", branch)
 		return nil
 	},

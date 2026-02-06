@@ -178,6 +178,11 @@ Prompts for worktrees with uncommitted changes or config file modifications.`,
 				continue
 			}
 
+			// Clean up snapshots
+			if err := mgr.RemoveSnapshot(branch); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to remove snapshots for %s: %v\n", branch, err)
+			}
+
 			// Delete local branch (force because remote is gone, so git sees it as "not fully merged")
 			if err := mgr.DeleteBranch(branch, true); err != nil {
 				// Worktree is already gone, just warn
