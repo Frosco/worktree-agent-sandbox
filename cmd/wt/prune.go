@@ -172,6 +172,39 @@ Prompts for worktrees with uncommitted changes or config file modifications.`,
 				}
 			}
 
+			// Memory change detection
+			if !pruneForce && !pruneSkipChanges {
+				memChanges, err := mgr.DetectMemoryChanges(wtPath)
+				if err != nil {
+					errors = append(errors, fmt.Sprintf("%s: detecting memory changes: %v", branch, err))
+					continue
+				}
+
+				if len(memChanges) > 0 {
+					action := HandleMemoryChanges(memChanges, mgr, wtPath, branch, cmd.OutOrStdout(), cmd.ErrOrStderr(), ConfigChangeOptions{
+						AllowSkip:  true,
+						BranchName: branch,
+						AbortLabel: "Abort prune",
+					})
+					switch action {
+					case ConfigChangeSkip:
+						fmt.Fprintf(cmd.OutOrStdout(), "Skipping %s\n", branch)
+						continue
+					case ConfigChangeAbort:
+						if len(pruned) > 0 {
+							fmt.Fprintf(cmd.OutOrStdout(), "\nPruned %d worktree(s) before abort:\n", len(pruned))
+							for _, p := range pruned {
+								fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", p)
+							}
+						}
+						return fmt.Errorf("aborted")
+					case ConfigChangeError:
+						errors = append(errors, fmt.Sprintf("%s: invalid choice", branch))
+						continue
+					}
+				}
+			}
+
 			// Remove worktree
 			if err := mgr.Remove(branch, pruneForce); err != nil {
 				errors = append(errors, fmt.Sprintf("%s: remove worktree: %v", branch, err))
@@ -181,6 +214,9 @@ Prompts for worktrees with uncommitted changes or config file modifications.`,
 			// Clean up snapshots
 			if err := mgr.RemoveSnapshot(branch); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to remove snapshots for %s: %v\n", branch, err)
+			}
+			if err := mgr.RemoveMemorySnapshot(branch); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to remove memory snapshots for %s: %v\n", branch, err)
 			}
 
 			// Delete local branch (force because remote is gone, so git sees it as "not fully merged")
