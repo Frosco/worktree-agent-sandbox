@@ -180,6 +180,126 @@ func TestRemoveMemorySnapshot_NonexistentIsNotError(t *testing.T) {
 	}
 }
 
+func TestDetectMemoryChanges_NoChanges(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	wtPath := filepath.Join(tmpDir, "worktree")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	os.MkdirAll(repoRoot, 0755)
+	os.MkdirAll(wtPath, 0755)
+
+	// Create identical memory in both
+	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
+	wtMemDir, _ := ClaudeMemoryDir(wtPath)
+	t.Cleanup(func() {
+		os.RemoveAll(mainMemDir)
+		os.RemoveAll(wtMemDir)
+	})
+	os.MkdirAll(mainMemDir, 0755)
+	os.MkdirAll(wtMemDir, 0755)
+	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte("# Same"), 0644)
+	os.WriteFile(filepath.Join(wtMemDir, "MEMORY.md"), []byte("# Same"), 0644)
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	changes, err := mgr.DetectMemoryChanges(wtPath, "feature-x")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(changes) != 0 {
+		t.Errorf("expected no changes, got %d", len(changes))
+	}
+}
+
+func TestDetectMemoryChanges_Modified(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	wtPath := filepath.Join(tmpDir, "worktree")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	os.MkdirAll(repoRoot, 0755)
+	os.MkdirAll(wtPath, 0755)
+
+	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
+	wtMemDir, _ := ClaudeMemoryDir(wtPath)
+	t.Cleanup(func() {
+		os.RemoveAll(mainMemDir)
+		os.RemoveAll(wtMemDir)
+	})
+	os.MkdirAll(mainMemDir, 0755)
+	os.MkdirAll(wtMemDir, 0755)
+	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte("# Original"), 0644)
+	os.WriteFile(filepath.Join(wtMemDir, "MEMORY.md"), []byte("# Modified by Claude"), 0644)
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	changes, err := mgr.DetectMemoryChanges(wtPath, "feature-x")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %d", len(changes))
+	}
+	if changes[0].File != "MEMORY.md" {
+		t.Errorf("expected MEMORY.md, got %q", changes[0].File)
+	}
+}
+
+func TestDetectMemoryChanges_MainHasNoMemory(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	wtPath := filepath.Join(tmpDir, "worktree")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	os.MkdirAll(repoRoot, 0755)
+	os.MkdirAll(wtPath, 0755)
+
+	// Only worktree has memory
+	wtMemDir, _ := ClaudeMemoryDir(wtPath)
+	t.Cleanup(func() {
+		os.RemoveAll(wtMemDir)
+	})
+	os.MkdirAll(wtMemDir, 0755)
+	os.WriteFile(filepath.Join(wtMemDir, "MEMORY.md"), []byte("# New memory"), 0644)
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	changes, err := mgr.DetectMemoryChanges(wtPath, "feature-x")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %d", len(changes))
+	}
+	if changes[0].File != "MEMORY.md" {
+		t.Errorf("expected MEMORY.md, got %q", changes[0].File)
+	}
+	if changes[0].Conflict {
+		t.Error("should not be a conflict when main has no memory")
+	}
+}
+
+func TestDetectMemoryChanges_WorktreeHasNoMemory(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	wtPath := filepath.Join(tmpDir, "worktree")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	os.MkdirAll(repoRoot, 0755)
+	os.MkdirAll(wtPath, 0755)
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	changes, err := mgr.DetectMemoryChanges(wtPath, "feature-x")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(changes) != 0 {
+		t.Errorf("expected no changes, got %d", len(changes))
+	}
+}
+
 func TestClaudeMemoryDir(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {
