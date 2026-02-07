@@ -120,3 +120,89 @@ func HandleConfigChanges(
 		return ConfigChangeError
 	}
 }
+
+// HandleMemoryChanges prompts the user about modified Claude memory files and handles their choice.
+// Same UI as HandleConfigChanges but merges via MergeMemoryBack.
+func HandleMemoryChanges(
+	changes []worktree.FileChange,
+	mgr *worktree.Manager,
+	wtPath string,
+	branch string,
+	stdout io.Writer,
+	stderr io.Writer,
+	opts ConfigChangeOptions,
+) ConfigChangeAction {
+	if len(changes) == 0 {
+		return ConfigChangeContinue
+	}
+
+	// Display header
+	if opts.BranchName != "" {
+		fmt.Fprintf(stdout, "\n%s has modified memory files:\n", opts.BranchName)
+	} else {
+		fmt.Fprintln(stdout, "These memory files were modified:")
+	}
+
+	// Display changes
+	for _, c := range changes {
+		conflict := ""
+		if c.Conflict {
+			conflict = " (CONFLICT: source also changed)"
+		}
+		fmt.Fprintf(stdout, "  %s%s\n", c.File, conflict)
+	}
+	fmt.Fprintln(stdout)
+
+	// Display options
+	fmt.Fprintln(stdout, "[m] Merge back to main memory")
+	fmt.Fprintln(stdout, "[k] Discard worktree memory changes")
+	if opts.AllowSkip {
+		fmt.Fprintln(stdout, "[s] Skip this worktree")
+	}
+	abortLabel := opts.AbortLabel
+	if abortLabel == "" {
+		abortLabel = "Abort"
+	}
+	fmt.Fprintf(stdout, "[a] %s\n", abortLabel)
+	fmt.Fprint(stdout, "Choice: ")
+
+	// Read input
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Fprintf(stderr, "Error reading input: %v\n", err)
+		return ConfigChangeError
+	}
+	input = strings.TrimSpace(strings.ToLower(input))
+
+	switch input {
+	case "m":
+		for _, c := range changes {
+			result := mgr.MergeMemoryBack(wtPath, c.File, branch)
+			switch result.Status {
+			case worktree.MergeStatusMerged:
+				fmt.Fprintf(stdout, "Merged %s (3-way)\n", c.File)
+			case worktree.MergeStatusConflict:
+				fmt.Fprintf(stderr, "Kept main version of %s (conflict)\n", c.File)
+			case worktree.MergeStatusCopied:
+				fmt.Fprintf(stdout, "Copied %s\n", c.File)
+			case worktree.MergeStatusError:
+				fmt.Fprintf(stderr, "Failed to merge %s: %v\n", c.File, result.Err)
+			}
+		}
+		return ConfigChangeContinue
+	case "k":
+		return ConfigChangeContinue
+	case "s":
+		if opts.AllowSkip {
+			return ConfigChangeSkip
+		}
+		fmt.Fprintln(stderr, "Invalid choice")
+		return ConfigChangeError
+	case "a":
+		return ConfigChangeAbort
+	default:
+		fmt.Fprintln(stderr, "Invalid choice")
+		return ConfigChangeError
+	}
+}
