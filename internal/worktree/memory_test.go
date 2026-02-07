@@ -23,6 +23,8 @@ func TestMemorySnapshotPath(t *testing.T) {
 
 func TestCopyMemory(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
 	repoRoot := filepath.Join(tmpDir, "repo")
 	wtPath := filepath.Join(tmpDir, "worktree")
 	worktreeBase := filepath.Join(tmpDir, "worktrees")
@@ -30,12 +32,7 @@ func TestCopyMemory(t *testing.T) {
 	os.MkdirAll(repoRoot, 0755)
 	os.MkdirAll(wtPath, 0755)
 
-	// Create main's Claude memory directory
 	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
-	t.Cleanup(func() {
-		// ClaudeMemoryDir resolves under ~/.claude/projects, clean up after test
-		os.RemoveAll(mainMemDir)
-	})
 	os.MkdirAll(mainMemDir, 0755)
 	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte("# Memory\nKey insight"), 0644)
 	os.WriteFile(filepath.Join(mainMemDir, "debugging.md"), []byte("# Debugging notes"), 0644)
@@ -46,11 +43,7 @@ func TestCopyMemory(t *testing.T) {
 		t.Fatalf("CopyMemory failed: %v", err)
 	}
 
-	// Verify files were copied to worktree's Claude memory dir
 	wtMemDir, _ := ClaudeMemoryDir(wtPath)
-	t.Cleanup(func() {
-		os.RemoveAll(wtMemDir)
-	})
 
 	content, err := os.ReadFile(filepath.Join(wtMemDir, "MEMORY.md"))
 	if err != nil {
@@ -71,6 +64,8 @@ func TestCopyMemory(t *testing.T) {
 
 func TestCopyMemory_NoMainMemory(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
 	repoRoot := filepath.Join(tmpDir, "repo")
 	wtPath := filepath.Join(tmpDir, "worktree")
 	worktreeBase := filepath.Join(tmpDir, "worktrees")
@@ -80,12 +75,10 @@ func TestCopyMemory_NoMainMemory(t *testing.T) {
 
 	mgr := NewManager(repoRoot, worktreeBase)
 
-	// Should not error when main has no memory
 	if err := mgr.CopyMemory(wtPath); err != nil {
 		t.Fatalf("CopyMemory should be no-op when no memory exists: %v", err)
 	}
 
-	// Verify worktree memory dir was NOT created
 	wtMemDir, _ := ClaudeMemoryDir(wtPath)
 	if _, err := os.Stat(wtMemDir); !os.IsNotExist(err) {
 		t.Error("worktree memory dir should not exist when main has none")
@@ -94,14 +87,14 @@ func TestCopyMemory_NoMainMemory(t *testing.T) {
 
 func TestSaveMemorySnapshot(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
 	repoRoot := filepath.Join(tmpDir, "repo")
 	worktreeBase := filepath.Join(tmpDir, "worktrees")
 
 	os.MkdirAll(repoRoot, 0755)
 
-	// Create main's Claude memory
 	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
-	t.Cleanup(func() { os.RemoveAll(mainMemDir) })
 	os.MkdirAll(mainMemDir, 0755)
 	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte("# Memory"), 0644)
 
@@ -111,7 +104,6 @@ func TestSaveMemorySnapshot(t *testing.T) {
 		t.Fatalf("SaveMemorySnapshot failed: %v", err)
 	}
 
-	// Verify snapshot exists
 	snapshotPath := mgr.MemorySnapshotPath("feature-x")
 	content, err := os.ReadFile(filepath.Join(snapshotPath, "MEMORY.md"))
 	if err != nil {
@@ -124,6 +116,8 @@ func TestSaveMemorySnapshot(t *testing.T) {
 
 func TestSaveMemorySnapshot_NoMainMemory(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
 	repoRoot := filepath.Join(tmpDir, "repo")
 	worktreeBase := filepath.Join(tmpDir, "worktrees")
 
@@ -131,7 +125,6 @@ func TestSaveMemorySnapshot_NoMainMemory(t *testing.T) {
 
 	mgr := NewManager(repoRoot, worktreeBase)
 
-	// Should not error when no memory exists
 	if err := mgr.SaveMemorySnapshot("feature-x"); err != nil {
 		t.Fatalf("should be no-op: %v", err)
 	}
@@ -139,13 +132,14 @@ func TestSaveMemorySnapshot_NoMainMemory(t *testing.T) {
 
 func TestRemoveMemorySnapshot(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
 	repoRoot := filepath.Join(tmpDir, "repo")
 	worktreeBase := filepath.Join(tmpDir, "worktrees")
 
 	os.MkdirAll(repoRoot, 0755)
 
 	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
-	t.Cleanup(func() { os.RemoveAll(mainMemDir) })
 	os.MkdirAll(mainMemDir, 0755)
 	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte("# Memory"), 0644)
 
@@ -183,6 +177,8 @@ func TestRemoveMemorySnapshot_NonexistentIsNotError(t *testing.T) {
 
 func TestDetectMemoryChanges_NoChanges(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
 	repoRoot := filepath.Join(tmpDir, "repo")
 	wtPath := filepath.Join(tmpDir, "worktree")
 	worktreeBase := filepath.Join(tmpDir, "worktrees")
@@ -190,13 +186,8 @@ func TestDetectMemoryChanges_NoChanges(t *testing.T) {
 	os.MkdirAll(repoRoot, 0755)
 	os.MkdirAll(wtPath, 0755)
 
-	// Create identical memory in both
 	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
 	wtMemDir, _ := ClaudeMemoryDir(wtPath)
-	t.Cleanup(func() {
-		os.RemoveAll(mainMemDir)
-		os.RemoveAll(wtMemDir)
-	})
 	os.MkdirAll(mainMemDir, 0755)
 	os.MkdirAll(wtMemDir, 0755)
 	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte("# Same"), 0644)
@@ -215,6 +206,8 @@ func TestDetectMemoryChanges_NoChanges(t *testing.T) {
 
 func TestDetectMemoryChanges_Modified(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
 	repoRoot := filepath.Join(tmpDir, "repo")
 	wtPath := filepath.Join(tmpDir, "worktree")
 	worktreeBase := filepath.Join(tmpDir, "worktrees")
@@ -224,10 +217,6 @@ func TestDetectMemoryChanges_Modified(t *testing.T) {
 
 	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
 	wtMemDir, _ := ClaudeMemoryDir(wtPath)
-	t.Cleanup(func() {
-		os.RemoveAll(mainMemDir)
-		os.RemoveAll(wtMemDir)
-	})
 	os.MkdirAll(mainMemDir, 0755)
 	os.MkdirAll(wtMemDir, 0755)
 	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte("# Original"), 0644)
@@ -249,6 +238,8 @@ func TestDetectMemoryChanges_Modified(t *testing.T) {
 
 func TestDetectMemoryChanges_MainHasNoMemory(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
 	repoRoot := filepath.Join(tmpDir, "repo")
 	wtPath := filepath.Join(tmpDir, "worktree")
 	worktreeBase := filepath.Join(tmpDir, "worktrees")
@@ -256,11 +247,7 @@ func TestDetectMemoryChanges_MainHasNoMemory(t *testing.T) {
 	os.MkdirAll(repoRoot, 0755)
 	os.MkdirAll(wtPath, 0755)
 
-	// Only worktree has memory
 	wtMemDir, _ := ClaudeMemoryDir(wtPath)
-	t.Cleanup(func() {
-		os.RemoveAll(wtMemDir)
-	})
 	os.MkdirAll(wtMemDir, 0755)
 	os.WriteFile(filepath.Join(wtMemDir, "MEMORY.md"), []byte("# New memory"), 0644)
 
@@ -283,6 +270,8 @@ func TestDetectMemoryChanges_MainHasNoMemory(t *testing.T) {
 
 func TestDetectMemoryChanges_WorktreeHasNoMemory(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
 	repoRoot := filepath.Join(tmpDir, "repo")
 	wtPath := filepath.Join(tmpDir, "worktree")
 	worktreeBase := filepath.Join(tmpDir, "worktrees")
@@ -303,6 +292,8 @@ func TestDetectMemoryChanges_WorktreeHasNoMemory(t *testing.T) {
 
 func TestMergeMemoryBack_FallbackCopy(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
 	repoRoot := filepath.Join(tmpDir, "repo")
 	wtPath := filepath.Join(tmpDir, "worktree")
 	worktreeBase := filepath.Join(tmpDir, "worktrees")
@@ -310,13 +301,8 @@ func TestMergeMemoryBack_FallbackCopy(t *testing.T) {
 	os.MkdirAll(repoRoot, 0755)
 	os.MkdirAll(wtPath, 0755)
 
-	// Create memory in both (no snapshot → fallback to copy)
 	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
 	wtMemDir, _ := ClaudeMemoryDir(wtPath)
-	t.Cleanup(func() {
-		os.RemoveAll(mainMemDir)
-		os.RemoveAll(wtMemDir)
-	})
 	os.MkdirAll(mainMemDir, 0755)
 	os.MkdirAll(wtMemDir, 0755)
 	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte("main version"), 0644)
@@ -341,6 +327,8 @@ func TestMergeMemoryBack_ThreeWayCleanMerge(t *testing.T) {
 	}
 
 	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
 	repoRoot := filepath.Join(tmpDir, "repo")
 	wtPath := filepath.Join(tmpDir, "worktree")
 	worktreeBase := filepath.Join(tmpDir, "worktrees")
@@ -350,10 +338,6 @@ func TestMergeMemoryBack_ThreeWayCleanMerge(t *testing.T) {
 
 	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
 	wtMemDir, _ := ClaudeMemoryDir(wtPath)
-	t.Cleanup(func() {
-		os.RemoveAll(mainMemDir)
-		os.RemoveAll(wtMemDir)
-	})
 	os.MkdirAll(mainMemDir, 0755)
 	os.MkdirAll(wtMemDir, 0755)
 
@@ -363,11 +347,9 @@ func TestMergeMemoryBack_ThreeWayCleanMerge(t *testing.T) {
 	left := "modified1\nline2\nline3\nline4\nline5\n"
 	right := "line1\nline2\nline3\nline4\nmodified5\n"
 
-	// Write base and snapshot it
 	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte(base), 0644)
 	mgr.SaveMemorySnapshot("feature-x")
 
-	// Modify both sides
 	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte(left), 0644)
 	os.WriteFile(filepath.Join(wtMemDir, "MEMORY.md"), []byte(right), 0644)
 
@@ -385,6 +367,8 @@ func TestMergeMemoryBack_ThreeWayCleanMerge(t *testing.T) {
 
 func TestMergeMemoryBack_MainNoMemoryDir(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
 	repoRoot := filepath.Join(tmpDir, "repo")
 	wtPath := filepath.Join(tmpDir, "worktree")
 	worktreeBase := filepath.Join(tmpDir, "worktrees")
@@ -392,11 +376,7 @@ func TestMergeMemoryBack_MainNoMemoryDir(t *testing.T) {
 	os.MkdirAll(repoRoot, 0755)
 	os.MkdirAll(wtPath, 0755)
 
-	// Only worktree has memory
 	wtMemDir, _ := ClaudeMemoryDir(wtPath)
-	t.Cleanup(func() {
-		os.RemoveAll(wtMemDir)
-	})
 	os.MkdirAll(wtMemDir, 0755)
 	os.WriteFile(filepath.Join(wtMemDir, "MEMORY.md"), []byte("new memory"), 0644)
 
@@ -407,11 +387,7 @@ func TestMergeMemoryBack_MainNoMemoryDir(t *testing.T) {
 		t.Errorf("expected MergeStatusCopied, got %v", result.Status)
 	}
 
-	// Verify main's memory dir was created with the content
 	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
-	t.Cleanup(func() {
-		os.RemoveAll(mainMemDir)
-	})
 	content, err := os.ReadFile(filepath.Join(mainMemDir, "MEMORY.md"))
 	if err != nil {
 		t.Fatalf("main memory should be created: %v", err)
@@ -422,10 +398,8 @@ func TestMergeMemoryBack_MainNoMemoryDir(t *testing.T) {
 }
 
 func TestClaudeMemoryDir(t *testing.T) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatal(err)
-	}
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
 
 	tests := []struct {
 		name     string
@@ -435,12 +409,12 @@ func TestClaudeMemoryDir(t *testing.T) {
 		{
 			name:     "simple path",
 			path:     "/home/user/dev/my-project",
-			expected: filepath.Join(home, ".claude", "projects", "-home-user-dev-my-project", "memory"),
+			expected: filepath.Join(tmpDir, ".claude", "projects", "-home-user-dev-my-project", "memory"),
 		},
 		{
 			name:     "path with dots",
 			path:     "/home/user/.local/share/wt/worktrees/repo/branch",
-			expected: filepath.Join(home, ".claude", "projects", "-home-user--local-share-wt-worktrees-repo-branch", "memory"),
+			expected: filepath.Join(tmpDir, ".claude", "projects", "-home-user--local-share-wt-worktrees-repo-branch", "memory"),
 		},
 	}
 
