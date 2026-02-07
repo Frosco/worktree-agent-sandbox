@@ -2,6 +2,7 @@ package worktree
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -297,6 +298,126 @@ func TestDetectMemoryChanges_WorktreeHasNoMemory(t *testing.T) {
 	}
 	if len(changes) != 0 {
 		t.Errorf("expected no changes, got %d", len(changes))
+	}
+}
+
+func TestMergeMemoryBack_FallbackCopy(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	wtPath := filepath.Join(tmpDir, "worktree")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	os.MkdirAll(repoRoot, 0755)
+	os.MkdirAll(wtPath, 0755)
+
+	// Create memory in both (no snapshot → fallback to copy)
+	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
+	wtMemDir, _ := ClaudeMemoryDir(wtPath)
+	t.Cleanup(func() {
+		os.RemoveAll(mainMemDir)
+		os.RemoveAll(wtMemDir)
+	})
+	os.MkdirAll(mainMemDir, 0755)
+	os.MkdirAll(wtMemDir, 0755)
+	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte("main version"), 0644)
+	os.WriteFile(filepath.Join(wtMemDir, "MEMORY.md"), []byte("worktree version"), 0644)
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	result := mgr.MergeMemoryBack(wtPath, "MEMORY.md", "feature-x")
+	if result.Status != MergeStatusCopied {
+		t.Errorf("expected MergeStatusCopied, got %v", result.Status)
+	}
+
+	content, _ := os.ReadFile(filepath.Join(mainMemDir, "MEMORY.md"))
+	if string(content) != "worktree version" {
+		t.Errorf("expected worktree version, got %q", string(content))
+	}
+}
+
+func TestMergeMemoryBack_ThreeWayCleanMerge(t *testing.T) {
+	if _, err := exec.LookPath("mergiraf"); err != nil {
+		t.Skip("mergiraf not available")
+	}
+
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	wtPath := filepath.Join(tmpDir, "worktree")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	os.MkdirAll(repoRoot, 0755)
+	os.MkdirAll(wtPath, 0755)
+
+	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
+	wtMemDir, _ := ClaudeMemoryDir(wtPath)
+	t.Cleanup(func() {
+		os.RemoveAll(mainMemDir)
+		os.RemoveAll(wtMemDir)
+	})
+	os.MkdirAll(mainMemDir, 0755)
+	os.MkdirAll(wtMemDir, 0755)
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	base := "line1\nline2\nline3\nline4\nline5\n"
+	left := "modified1\nline2\nline3\nline4\nline5\n"
+	right := "line1\nline2\nline3\nline4\nmodified5\n"
+
+	// Write base and snapshot it
+	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte(base), 0644)
+	mgr.SaveMemorySnapshot("feature-x")
+
+	// Modify both sides
+	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte(left), 0644)
+	os.WriteFile(filepath.Join(wtMemDir, "MEMORY.md"), []byte(right), 0644)
+
+	result := mgr.MergeMemoryBack(wtPath, "MEMORY.md", "feature-x")
+	if result.Status != MergeStatusMerged {
+		t.Errorf("expected MergeStatusMerged, got %v (err: %v)", result.Status, result.Err)
+	}
+
+	content, _ := os.ReadFile(filepath.Join(mainMemDir, "MEMORY.md"))
+	expected := "modified1\nline2\nline3\nline4\nmodified5\n"
+	if string(content) != expected {
+		t.Errorf("merged content mismatch:\n  got:  %q\n  want: %q", string(content), expected)
+	}
+}
+
+func TestMergeMemoryBack_MainNoMemoryDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	wtPath := filepath.Join(tmpDir, "worktree")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	os.MkdirAll(repoRoot, 0755)
+	os.MkdirAll(wtPath, 0755)
+
+	// Only worktree has memory
+	wtMemDir, _ := ClaudeMemoryDir(wtPath)
+	t.Cleanup(func() {
+		os.RemoveAll(wtMemDir)
+	})
+	os.MkdirAll(wtMemDir, 0755)
+	os.WriteFile(filepath.Join(wtMemDir, "MEMORY.md"), []byte("new memory"), 0644)
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	result := mgr.MergeMemoryBack(wtPath, "MEMORY.md", "feature-x")
+	if result.Status != MergeStatusCopied {
+		t.Errorf("expected MergeStatusCopied, got %v", result.Status)
+	}
+
+	// Verify main's memory dir was created with the content
+	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
+	t.Cleanup(func() {
+		os.RemoveAll(mainMemDir)
+	})
+	content, err := os.ReadFile(filepath.Join(mainMemDir, "MEMORY.md"))
+	if err != nil {
+		t.Fatalf("main memory should be created: %v", err)
+	}
+	if string(content) != "new memory" {
+		t.Errorf("expected 'new memory', got %q", string(content))
 	}
 }
 

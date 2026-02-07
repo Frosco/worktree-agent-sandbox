@@ -2,6 +2,7 @@ package worktree
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -133,6 +134,53 @@ func (m *Manager) DetectMemoryChanges(wtPath, branch string) ([]FileChange, erro
 	})
 
 	return changes, err
+}
+
+// MergeMemoryBack merges a memory file from the worktree's Claude memory dir
+// back to main's Claude memory dir. Uses three-way merge when snapshot + mergiraf
+// are available, otherwise falls back to plain copy.
+func (m *Manager) MergeMemoryBack(wtPath, file, branch string) MergeResult {
+	wtMemDir, err := ClaudeMemoryDir(wtPath)
+	if err != nil {
+		return MergeResult{Status: MergeStatusError, Err: err}
+	}
+	mainMemDir, err := ClaudeMemoryDir(m.RepoRoot)
+	if err != nil {
+		return MergeResult{Status: MergeStatusError, Err: err}
+	}
+
+	srcPath := filepath.Join(wtMemDir, file)
+	dstPath := filepath.Join(mainMemDir, file)
+
+	srcInfo, err := os.Stat(srcPath)
+	if err != nil {
+		return MergeResult{Status: MergeStatusError, Err: err}
+	}
+
+	// Directories always use copy
+	if srcInfo.IsDir() {
+		if err := copyDir(srcPath, dstPath); err != nil {
+			return MergeResult{Status: MergeStatusError, Err: err}
+		}
+		return MergeResult{Status: MergeStatusCopied}
+	}
+
+	// Try three-way merge if snapshot exists and mergiraf is available
+	snapshotFile := filepath.Join(m.MemorySnapshotPath(branch), file)
+	if _, err := os.Stat(snapshotFile); err == nil {
+		if mergirafPath, err := exec.LookPath("mergiraf"); err == nil {
+			return m.mergeThreeWay(mergirafPath, snapshotFile, dstPath, srcPath)
+		}
+	}
+
+	// Fallback: plain copy (also handles "main has no memory" case)
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+		return MergeResult{Status: MergeStatusError, Err: err}
+	}
+	if err := copyFile(srcPath, dstPath); err != nil {
+		return MergeResult{Status: MergeStatusError, Err: err}
+	}
+	return MergeResult{Status: MergeStatusCopied}
 }
 
 func encodeClaudePath(path string) string {
