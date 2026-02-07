@@ -92,6 +92,14 @@ var newCmd = &cobra.Command{
 			}
 		}
 
+		// Copy Claude memory to new worktree and snapshot for merge-back
+		if err := mgr.CopyMemory(wtPath); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to copy memory: %v\n", err)
+		}
+		if err := mgr.SaveMemorySnapshot(branch); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to save memory snapshot: %v\n", err)
+		}
+
 		if newPrintPath {
 			fmt.Fprintln(cmd.OutOrStdout(), wtPath)
 		} else {
