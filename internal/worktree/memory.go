@@ -18,6 +18,12 @@ func ClaudeMemoryDir(projectPath string) (string, error) {
 	return filepath.Join(home, ".claude", "projects", encoded, "memory"), nil
 }
 
+// MemorySnapshotPath returns the path where memory snapshots are stored for a branch.
+// This is a subdirectory within the existing snapshot hierarchy.
+func (m *Manager) MemorySnapshotPath(branch string) string {
+	return filepath.Join(m.SnapshotPath(branch), "claude-memory")
+}
+
 func encodeClaudePath(path string) string {
 	// Strip leading /
 	path = strings.TrimPrefix(path, "/")

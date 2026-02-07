@@ -6,6 +6,20 @@ import (
 	"testing"
 )
 
+func TestMemorySnapshotPath(t *testing.T) {
+	mgr := &Manager{
+		RepoRoot:     "/repo",
+		RepoName:     "myrepo",
+		WorktreeBase: "/data/wt/worktrees",
+	}
+
+	got := mgr.MemorySnapshotPath("feature-x")
+	expected := "/data/wt/snapshots/myrepo/feature-x/claude-memory"
+	if got != expected {
+		t.Errorf("expected %s, got %s", expected, got)
+	}
+}
+
 func TestClaudeMemoryDir(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {
