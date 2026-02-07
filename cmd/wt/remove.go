@@ -79,6 +79,25 @@ var removeCmd = &cobra.Command{
 			}
 		}
 
+		// Memory change detection
+		if !removeForce && !removeSkipChanges {
+			memChanges, err := mgr.DetectMemoryChanges(wtPath)
+			if err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to detect memory changes: %v\n", err)
+			} else if len(memChanges) > 0 {
+				action := HandleMemoryChanges(memChanges, mgr, wtPath, branch, cmd.OutOrStdout(), cmd.ErrOrStderr(), ConfigChangeOptions{
+					AllowSkip:  false,
+					AbortLabel: "Abort remove",
+				})
+				switch action {
+				case ConfigChangeAbort:
+					return fmt.Errorf("aborted")
+				case ConfigChangeError:
+					return fmt.Errorf("invalid choice")
+				}
+			}
+		}
+
 		if err := mgr.Remove(branch, removeForce); err != nil {
 			return err
 		}
@@ -86,6 +105,9 @@ var removeCmd = &cobra.Command{
 		// Clean up snapshots
 		if err := mgr.RemoveSnapshot(branch); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to remove snapshots: %v\n", err)
+		}
+		if err := mgr.RemoveMemorySnapshot(branch); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to remove memory snapshots: %v\n", err)
 		}
 
 		fmt.Fprintf(cmd.OutOrStdout(), "Removed worktree '%s'\n", branch)
