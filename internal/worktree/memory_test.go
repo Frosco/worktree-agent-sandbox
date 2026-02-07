@@ -204,7 +204,7 @@ func TestDetectMemoryChanges_NoChanges(t *testing.T) {
 
 	mgr := NewManager(repoRoot, worktreeBase)
 
-	changes, err := mgr.DetectMemoryChanges(wtPath, "feature-x")
+	changes, err := mgr.DetectMemoryChanges(wtPath)
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}
@@ -235,7 +235,7 @@ func TestDetectMemoryChanges_Modified(t *testing.T) {
 
 	mgr := NewManager(repoRoot, worktreeBase)
 
-	changes, err := mgr.DetectMemoryChanges(wtPath, "feature-x")
+	changes, err := mgr.DetectMemoryChanges(wtPath)
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestDetectMemoryChanges_MainHasNoMemory(t *testing.T) {
 
 	mgr := NewManager(repoRoot, worktreeBase)
 
-	changes, err := mgr.DetectMemoryChanges(wtPath, "feature-x")
+	changes, err := mgr.DetectMemoryChanges(wtPath)
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}
@@ -292,7 +292,7 @@ func TestDetectMemoryChanges_WorktreeHasNoMemory(t *testing.T) {
 
 	mgr := NewManager(repoRoot, worktreeBase)
 
-	changes, err := mgr.DetectMemoryChanges(wtPath, "feature-x")
+	changes, err := mgr.DetectMemoryChanges(wtPath)
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}

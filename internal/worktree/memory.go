@@ -70,6 +70,14 @@ func (m *Manager) SaveMemorySnapshot(branch string) error {
 		return err
 	}
 
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+
 	dstDir := m.MemorySnapshotPath(branch)
 	return copyDir(srcDir, dstDir)
 }
@@ -87,7 +95,7 @@ func (m *Manager) RemoveMemorySnapshot(branch string) error {
 
 // DetectMemoryChanges compares the worktree's Claude memory directory with main's.
 // Returns changes for files that differ. File paths are relative to the memory directory.
-func (m *Manager) DetectMemoryChanges(wtPath, branch string) ([]FileChange, error) {
+func (m *Manager) DetectMemoryChanges(wtPath string) ([]FileChange, error) {
 	wtMemDir, err := ClaudeMemoryDir(wtPath)
 	if err != nil {
 		return nil, err
