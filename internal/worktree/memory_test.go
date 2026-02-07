@@ -20,6 +20,77 @@ func TestMemorySnapshotPath(t *testing.T) {
 	}
 }
 
+func TestCopyMemory(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	wtPath := filepath.Join(tmpDir, "worktree")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	os.MkdirAll(repoRoot, 0755)
+	os.MkdirAll(wtPath, 0755)
+
+	// Create main's Claude memory directory
+	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
+	t.Cleanup(func() {
+		// ClaudeMemoryDir resolves under ~/.claude/projects, clean up after test
+		os.RemoveAll(mainMemDir)
+	})
+	os.MkdirAll(mainMemDir, 0755)
+	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte("# Memory\nKey insight"), 0644)
+	os.WriteFile(filepath.Join(mainMemDir, "debugging.md"), []byte("# Debugging notes"), 0644)
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	if err := mgr.CopyMemory(wtPath); err != nil {
+		t.Fatalf("CopyMemory failed: %v", err)
+	}
+
+	// Verify files were copied to worktree's Claude memory dir
+	wtMemDir, _ := ClaudeMemoryDir(wtPath)
+	t.Cleanup(func() {
+		os.RemoveAll(wtMemDir)
+	})
+
+	content, err := os.ReadFile(filepath.Join(wtMemDir, "MEMORY.md"))
+	if err != nil {
+		t.Fatalf("MEMORY.md not copied: %v", err)
+	}
+	if string(content) != "# Memory\nKey insight" {
+		t.Errorf("content mismatch: %s", content)
+	}
+
+	content, err = os.ReadFile(filepath.Join(wtMemDir, "debugging.md"))
+	if err != nil {
+		t.Fatalf("debugging.md not copied: %v", err)
+	}
+	if string(content) != "# Debugging notes" {
+		t.Errorf("content mismatch: %s", content)
+	}
+}
+
+func TestCopyMemory_NoMainMemory(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	wtPath := filepath.Join(tmpDir, "worktree")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	os.MkdirAll(repoRoot, 0755)
+	os.MkdirAll(wtPath, 0755)
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	// Should not error when main has no memory
+	if err := mgr.CopyMemory(wtPath); err != nil {
+		t.Fatalf("CopyMemory should be no-op when no memory exists: %v", err)
+	}
+
+	// Verify worktree memory dir was NOT created
+	wtMemDir, _ := ClaudeMemoryDir(wtPath)
+	if _, err := os.Stat(wtMemDir); !os.IsNotExist(err) {
+		t.Error("worktree memory dir should not exist when main has none")
+	}
+}
+
 func TestClaudeMemoryDir(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {

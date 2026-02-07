@@ -24,6 +24,37 @@ func (m *Manager) MemorySnapshotPath(branch string) string {
 	return filepath.Join(m.SnapshotPath(branch), "claude-memory")
 }
 
+// CopyMemory copies the main repo's Claude memory directory to the worktree's
+// Claude memory location. No-op if main has no memory directory.
+func (m *Manager) CopyMemory(wtPath string) error {
+	srcDir, err := ClaudeMemoryDir(m.RepoRoot)
+	if err != nil {
+		return err
+	}
+
+	if _, err := os.Stat(srcDir); os.IsNotExist(err) {
+		return nil // no memory to copy
+	} else if err != nil {
+		return err
+	}
+
+	// Check if directory has any content
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+
+	dstDir, err := ClaudeMemoryDir(wtPath)
+	if err != nil {
+		return err
+	}
+
+	return copyDir(srcDir, dstDir)
+}
+
 func encodeClaudePath(path string) string {
 	// Strip leading /
 	path = strings.TrimPrefix(path, "/")
