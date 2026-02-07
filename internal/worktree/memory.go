@@ -55,6 +55,35 @@ func (m *Manager) CopyMemory(wtPath string) error {
 	return copyDir(srcDir, dstDir)
 }
 
+// SaveMemorySnapshot saves a copy of main's Claude memory directory to the
+// snapshot directory. No-op if main has no memory.
+func (m *Manager) SaveMemorySnapshot(branch string) error {
+	srcDir, err := ClaudeMemoryDir(m.RepoRoot)
+	if err != nil {
+		return err
+	}
+
+	if _, err := os.Stat(srcDir); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	dstDir := m.MemorySnapshotPath(branch)
+	return copyDir(srcDir, dstDir)
+}
+
+// RemoveMemorySnapshot deletes the memory snapshot directory for a branch.
+// Returns nil if it doesn't exist.
+func (m *Manager) RemoveMemorySnapshot(branch string) error {
+	snapshotDir := m.MemorySnapshotPath(branch)
+	err := os.RemoveAll(snapshotDir)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 func encodeClaudePath(path string) string {
 	// Strip leading /
 	path = strings.TrimPrefix(path, "/")

@@ -91,6 +91,95 @@ func TestCopyMemory_NoMainMemory(t *testing.T) {
 	}
 }
 
+func TestSaveMemorySnapshot(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	os.MkdirAll(repoRoot, 0755)
+
+	// Create main's Claude memory
+	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
+	t.Cleanup(func() { os.RemoveAll(mainMemDir) })
+	os.MkdirAll(mainMemDir, 0755)
+	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte("# Memory"), 0644)
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	if err := mgr.SaveMemorySnapshot("feature-x"); err != nil {
+		t.Fatalf("SaveMemorySnapshot failed: %v", err)
+	}
+
+	// Verify snapshot exists
+	snapshotPath := mgr.MemorySnapshotPath("feature-x")
+	content, err := os.ReadFile(filepath.Join(snapshotPath, "MEMORY.md"))
+	if err != nil {
+		t.Fatalf("snapshot not created: %v", err)
+	}
+	if string(content) != "# Memory" {
+		t.Errorf("snapshot content mismatch: %s", content)
+	}
+}
+
+func TestSaveMemorySnapshot_NoMainMemory(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	os.MkdirAll(repoRoot, 0755)
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	// Should not error when no memory exists
+	if err := mgr.SaveMemorySnapshot("feature-x"); err != nil {
+		t.Fatalf("should be no-op: %v", err)
+	}
+}
+
+func TestRemoveMemorySnapshot(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	os.MkdirAll(repoRoot, 0755)
+
+	mainMemDir, _ := ClaudeMemoryDir(repoRoot)
+	t.Cleanup(func() { os.RemoveAll(mainMemDir) })
+	os.MkdirAll(mainMemDir, 0755)
+	os.WriteFile(filepath.Join(mainMemDir, "MEMORY.md"), []byte("# Memory"), 0644)
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	mgr.SaveMemorySnapshot("feature-x")
+
+	snapshotPath := mgr.MemorySnapshotPath("feature-x")
+	if _, err := os.Stat(snapshotPath); os.IsNotExist(err) {
+		t.Fatal("snapshot should exist before removal")
+	}
+
+	if err := mgr.RemoveMemorySnapshot("feature-x"); err != nil {
+		t.Fatalf("RemoveMemorySnapshot failed: %v", err)
+	}
+
+	if _, err := os.Stat(snapshotPath); !os.IsNotExist(err) {
+		t.Error("snapshot should be removed")
+	}
+}
+
+func TestRemoveMemorySnapshot_NonexistentIsNotError(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+	worktreeBase := filepath.Join(tmpDir, "worktrees")
+
+	os.MkdirAll(repoRoot, 0755)
+
+	mgr := NewManager(repoRoot, worktreeBase)
+
+	if err := mgr.RemoveMemorySnapshot("nonexistent"); err != nil {
+		t.Errorf("should not error: %v", err)
+	}
+}
+
 func TestClaudeMemoryDir(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {
