@@ -4,12 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/niref/wt/internal/config"
 	"github.com/niref/wt/internal/worktree"
 	"github.com/spf13/cobra"
 )
-
-var listWorktreeBase string
 
 var listCmd = &cobra.Command{
 	Use:   "list",
@@ -25,13 +22,7 @@ var listCmd = &cobra.Command{
 			return fmt.Errorf("not in a git repository")
 		}
 
-		paths := config.DefaultPaths()
-		worktreeBase := listWorktreeBase
-		if worktreeBase == "" {
-			worktreeBase = paths.WorktreeBase
-		}
-
-		mgr := worktree.NewManager(repoRoot, worktreeBase)
+		mgr := worktree.NewManager(repoRoot)
 		worktrees, err := mgr.List()
 		if err != nil {
 			return err
@@ -43,7 +34,7 @@ var listCmd = &cobra.Command{
 		}
 
 		for _, wt := range worktrees {
-			fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\n", wt.Branch, wt.Path)
+			fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", wt.Name, wt.Branch, wt.Path)
 		}
 
 		return nil
@@ -51,6 +42,5 @@ var listCmd = &cobra.Command{
 }
 
 func init() {
-	listCmd.Flags().StringVar(&listWorktreeBase, "worktree-base", "", "Override worktree base directory")
 	rootCmd.AddCommand(listCmd)
 }

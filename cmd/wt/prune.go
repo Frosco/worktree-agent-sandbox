@@ -6,18 +6,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/niref/wt/internal/config"
 	"github.com/niref/wt/internal/worktree"
 	"github.com/spf13/cobra"
 )
 
 var (
-	pruneWorktreeBase string
-	pruneConfigPath   string
-	pruneForce        bool
-	pruneSkipChanges  bool
-	pruneNoFetch      bool
-	pruneDryRun       bool
+	pruneForce   bool
+	pruneNoFetch bool
+	pruneDryRun  bool
 )
 
 var pruneCmd = &cobra.Command{
@@ -26,7 +22,7 @@ var pruneCmd = &cobra.Command{
 	Long: `Remove worktrees whose branches have been deleted from the remote (merged or manually deleted).
 
 Only considers branches with upstream tracking configured - local-only branches are never pruned.
-Prompts for worktrees with uncommitted changes or config file modifications.`,
+Use --dry-run to preview what would be removed.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -38,13 +34,7 @@ Prompts for worktrees with uncommitted changes or config file modifications.`,
 			return fmt.Errorf("not in a git repository")
 		}
 
-		paths := config.DefaultPaths()
-		wtBase := pruneWorktreeBase
-		if wtBase == "" {
-			wtBase = paths.WorktreeBase
-		}
-
-		mgr := worktree.NewManager(repoRoot, wtBase)
+		mgr := worktree.NewManager(repoRoot)
 
 		// Fetch and prune remote refs (unless --no-fetch)
 		if !pruneNoFetch {
@@ -64,15 +54,18 @@ Prompts for worktrees with uncommitted changes or config file modifications.`,
 			return nil
 		}
 
-		// Find prune candidates
+		// Find prune candidates: worktrees whose branch has upstream tracking
+		// but the remote branch no longer exists
 		var candidates []worktree.WorktreeInfo
 		for _, wt := range worktrees {
+			if wt.Branch == "" {
+				continue
+			}
 			upstream := mgr.BranchUpstream(wt.Branch)
 			if upstream == "" {
 				// No upstream tracking - skip (local-only branch)
 				continue
 			}
-			// Check if upstream remote ref still exists
 			if mgr.RemoteBranchExists(wt.Branch) {
 				// Remote branch still exists - not a prune candidate
 				continue
@@ -89,7 +82,7 @@ Prompts for worktrees with uncommitted changes or config file modifications.`,
 		if pruneDryRun {
 			fmt.Fprintln(cmd.OutOrStdout(), "Would prune (dry-run):")
 			for _, c := range candidates {
-				fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", c.Branch)
+				fmt.Fprintf(cmd.OutOrStdout(), "  - %s (%s)\n", c.Name, c.Branch)
 			}
 			return nil
 		}
@@ -98,18 +91,13 @@ Prompts for worktrees with uncommitted changes or config file modifications.`,
 		var pruned []string
 		var errors []string
 
-		configPath := pruneConfigPath
-		if configPath == "" {
-			configPath = paths.GlobalConfig
-		}
-
 		for _, candidate := range candidates {
-			branch := candidate.Branch
+			name := candidate.Name
 			wtPath := candidate.Path
 
 			// Check for issues that require prompting
 			hasUncommitted := mgr.HasUncommittedChanges(wtPath)
-			hasUnpushed := mgr.HasUnpushedCommits(branch)
+			hasUnpushed := mgr.HasUnpushedCommits(candidate.Branch)
 
 			if (hasUncommitted || hasUnpushed) && !pruneForce {
 				issues := []string{}
@@ -119,113 +107,28 @@ Prompts for worktrees with uncommitted changes or config file modifications.`,
 				if hasUnpushed {
 					issues = append(issues, "unpushed commits")
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Remove %s? It has %s [y/n]: ", branch, strings.Join(issues, " and "))
+				fmt.Fprintf(cmd.OutOrStdout(), "Remove %s? It has %s [y/n]: ", name, strings.Join(issues, " and "))
 
 				reader := bufio.NewReader(os.Stdin)
 				input, err := reader.ReadString('\n')
 				if err != nil {
-					errors = append(errors, fmt.Sprintf("%s: failed to read input: %v", branch, err))
+					errors = append(errors, fmt.Sprintf("%s: failed to read input: %v", name, err))
 					continue
 				}
 				input = strings.TrimSpace(strings.ToLower(input))
 				if input != "y" && input != "yes" {
-					fmt.Fprintf(cmd.OutOrStdout(), "Skipping %s\n", branch)
+					fmt.Fprintf(cmd.OutOrStdout(), "Skipping %s\n", name)
 					continue
 				}
 			}
 
-			// Config file change detection (unless --force or --skip-changes)
-			if !pruneForce && !pruneSkipChanges {
-				globalCfg, _ := config.LoadGlobalConfig(configPath)
-				repoCfg, _ := config.LoadRepoConfig(repoRoot)
-				cfg := config.MergeConfigs(globalCfg, repoCfg)
-
-				if len(cfg.CopyFiles) > 0 {
-					changes, err := mgr.DetectChanges(wtPath, cfg.CopyFiles)
-					if err != nil {
-						errors = append(errors, fmt.Sprintf("%s: detecting changes: %v", branch, err))
-						continue
-					}
-
-					action := HandleConfigChanges(changes, mgr, wtPath, branch, cmd.OutOrStdout(), cmd.ErrOrStderr(), ConfigChangeOptions{
-						AllowSkip:  true,
-						BranchName: branch,
-						AbortLabel: "Abort prune",
-					})
-					switch action {
-					case ConfigChangeSkip:
-						fmt.Fprintf(cmd.OutOrStdout(), "Skipping %s\n", branch)
-						continue
-					case ConfigChangeAbort:
-						// Report what was already pruned before aborting
-						if len(pruned) > 0 {
-							fmt.Fprintf(cmd.OutOrStdout(), "\nPruned %d worktree(s) before abort:\n", len(pruned))
-							for _, p := range pruned {
-								fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", p)
-							}
-						}
-						return fmt.Errorf("aborted")
-					case ConfigChangeError:
-						errors = append(errors, fmt.Sprintf("%s: invalid choice", branch))
-						continue
-					}
-				}
-			}
-
-			// Memory change detection
-			if !pruneForce && !pruneSkipChanges {
-				memChanges, err := mgr.DetectMemoryChanges(wtPath)
-				if err != nil {
-					errors = append(errors, fmt.Sprintf("%s: detecting memory changes: %v", branch, err))
-					continue
-				}
-
-				if len(memChanges) > 0 {
-					action := HandleMemoryChanges(memChanges, mgr, wtPath, branch, cmd.OutOrStdout(), cmd.ErrOrStderr(), ConfigChangeOptions{
-						AllowSkip:  true,
-						BranchName: branch,
-						AbortLabel: "Abort prune",
-					})
-					switch action {
-					case ConfigChangeSkip:
-						fmt.Fprintf(cmd.OutOrStdout(), "Skipping %s\n", branch)
-						continue
-					case ConfigChangeAbort:
-						if len(pruned) > 0 {
-							fmt.Fprintf(cmd.OutOrStdout(), "\nPruned %d worktree(s) before abort:\n", len(pruned))
-							for _, p := range pruned {
-								fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", p)
-							}
-						}
-						return fmt.Errorf("aborted")
-					case ConfigChangeError:
-						errors = append(errors, fmt.Sprintf("%s: invalid choice", branch))
-						continue
-					}
-				}
-			}
-
-			// Remove worktree
-			if err := mgr.Remove(branch, pruneForce); err != nil {
-				errors = append(errors, fmt.Sprintf("%s: remove worktree: %v", branch, err))
+			// Remove worktree (force: true because user confirmed or --force flag)
+			if err := mgr.Remove(name, true); err != nil {
+				errors = append(errors, fmt.Sprintf("%s: remove worktree: %v", name, err))
 				continue
 			}
 
-			// Clean up snapshots
-			if err := mgr.RemoveSnapshot(branch); err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to remove snapshots for %s: %v\n", branch, err)
-			}
-			if err := mgr.RemoveMemorySnapshot(branch); err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to remove memory snapshots for %s: %v\n", branch, err)
-			}
-
-			// Delete local branch (force because remote is gone, so git sees it as "not fully merged")
-			if err := mgr.DeleteBranch(branch, true); err != nil {
-				// Worktree is already gone, just warn
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: removed worktree but failed to delete branch %s: %v\n", branch, err)
-			}
-
-			pruned = append(pruned, branch)
+			pruned = append(pruned, name)
 		}
 
 		// Print summary
@@ -252,10 +155,7 @@ Prompts for worktrees with uncommitted changes or config file modifications.`,
 }
 
 func init() {
-	pruneCmd.Flags().StringVar(&pruneWorktreeBase, "worktree-base", "", "Override worktree base directory")
-	pruneCmd.Flags().StringVar(&pruneConfigPath, "config", "", "Override global config path")
 	pruneCmd.Flags().BoolVarP(&pruneForce, "force", "f", false, "Force removal even if worktrees have uncommitted changes")
-	pruneCmd.Flags().BoolVar(&pruneSkipChanges, "skip-changes", false, "Skip config file change detection")
 	pruneCmd.Flags().BoolVar(&pruneNoFetch, "no-fetch", false, "Skip git fetch --prune (use current remote refs)")
 	pruneCmd.Flags().BoolVarP(&pruneDryRun, "dry-run", "n", false, "Show what would be pruned without doing it")
 	rootCmd.AddCommand(pruneCmd)

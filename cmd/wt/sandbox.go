@@ -5,19 +5,16 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/niref/wt/internal/config"
 	"github.com/niref/wt/internal/sandbox"
 	"github.com/niref/wt/internal/worktree"
 	"github.com/spf13/cobra"
 )
 
 var (
-	sandboxMounts       []string
-	sandboxWorktreeBase string
-	sandboxConfigPath   string
-	sandboxNoClaude     bool
-	sandboxNoMise       bool
-	sandboxImage        string
+	sandboxMounts   []string
+	sandboxNoClaude bool
+	sandboxNoMise   bool
+	sandboxImage    string
 )
 
 var sandboxCmd = &cobra.Command{
@@ -41,43 +38,18 @@ var sandboxCmd = &cobra.Command{
 			return fmt.Errorf("not in a git repository")
 		}
 
-		paths := config.DefaultPaths()
-		worktreeBase := sandboxWorktreeBase
-		if worktreeBase == "" {
-			worktreeBase = paths.WorktreeBase
-		}
-		configPath := sandboxConfigPath
-		if configPath == "" {
-			configPath = paths.GlobalConfig
-		}
-
-		// Load config for extra mounts (errors intentionally ignored - sandbox should work even without config)
-		globalCfg, _ := config.LoadGlobalConfig(configPath)
-		repoCfg, _ := config.LoadRepoConfig(repoRoot)
-		cfg := config.MergeConfigs(globalCfg, repoCfg)
-
-		mgr := worktree.NewManager(repoRoot, worktreeBase)
+		mgr := worktree.NewManager(repoRoot)
 
 		var wtPath string
 
 		if len(args) > 0 {
-			branch := args[0]
-			// Switch to (or create) worktree
-			if mgr.Exists(branch) {
-				wtPath = mgr.WorktreePath(branch)
-			} else {
-				var err error
-				wtPath, err = mgr.Create(branch, "")
-				if err != nil {
-					return err
-				}
-				// Copy config files
-				if len(cfg.CopyFiles) > 0 {
-					mgr.CopyFiles(wtPath, cfg.CopyFiles)
-				}
+			name := args[0]
+			if !mgr.Exists(name) {
+				return fmt.Errorf("worktree %q does not exist (use 'claude --worktree %s' to create it)", name, name)
 			}
+			wtPath = mgr.WorktreePath(name)
 		} else {
-			// Use current directory if it's a worktree managed by us
+			// Use current directory
 			wtPath = cwd
 		}
 
@@ -102,8 +74,7 @@ var sandboxCmd = &cobra.Command{
 		miseStateDir := filepath.Join(home, ".local", "state", "mise")
 		miseCacheDir := filepath.Join(home, ".cache", "mise")
 
-		// Combine extra mounts from config and flags
-		allMounts := append(cfg.ExtraMounts, sandboxMounts...)
+		allMounts := sandboxMounts
 
 		// Build/check image
 		imageName := sandboxImage
@@ -113,9 +84,9 @@ var sandboxCmd = &cobra.Command{
 
 		if !sandbox.ImageExists(imageName) {
 			fmt.Fprintln(cmd.OutOrStdout(), "Building sandbox image (this may take a few minutes)...")
-			containerfile, err := config.FindContainerfile(repoRoot)
-			if err != nil {
-				return fmt.Errorf("Containerfile not found. Copy it to ~/.local/share/wt/Containerfile or specify --image")
+			containerfile := findContainerfile(repoRoot)
+			if containerfile == "" {
+				return fmt.Errorf("Containerfile not found. Place it at <repo>/Containerfile or ~/.local/share/wt/Containerfile, or specify --image")
 			}
 			if err := sandbox.BuildImage(containerfile, imageName); err != nil {
 				return fmt.Errorf("building image: %w", err)
@@ -143,10 +114,25 @@ var sandboxCmd = &cobra.Command{
 
 func init() {
 	sandboxCmd.Flags().StringArrayVarP(&sandboxMounts, "mount", "m", nil, "Additional paths to mount")
-	sandboxCmd.Flags().StringVar(&sandboxWorktreeBase, "worktree-base", "", "Override worktree base directory")
-	sandboxCmd.Flags().StringVar(&sandboxConfigPath, "config", "", "Override global config path")
 	sandboxCmd.Flags().BoolVar(&sandboxNoClaude, "no-claude", false, "Don't start Claude, just get a shell")
 	sandboxCmd.Flags().BoolVar(&sandboxNoMise, "no-mise", false, "Don't run mise install")
 	sandboxCmd.Flags().StringVar(&sandboxImage, "image", "", "Container image to use")
 	rootCmd.AddCommand(sandboxCmd)
+}
+
+// findContainerfile looks for a Containerfile in the repo root or ~/.local/share/wt/.
+func findContainerfile(repoRoot string) string {
+	candidates := []string{
+		filepath.Join(repoRoot, "Containerfile"),
+	}
+	home, err := os.UserHomeDir()
+	if err == nil {
+		candidates = append(candidates, filepath.Join(home, ".local", "share", "wt", "Containerfile"))
+	}
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
 }

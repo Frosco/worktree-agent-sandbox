@@ -5,18 +5,18 @@ import (
 	"github.com/niref/wt/internal/worktree"
 )
 
-// buildPickerOptions creates the list of branch options for the interactive picker.
-// Main branch is always first, followed by worktrees in the order provided.
+// buildPickerOptions creates the list of options for the interactive picker.
+// The main branch is always listed first, followed by worktree names.
 func buildPickerOptions(mainBranch string, worktrees []worktree.WorktreeInfo) []string {
 	options := make([]string, 0, 1+len(worktrees))
 	options = append(options, mainBranch)
 	for _, wt := range worktrees {
-		options = append(options, wt.Branch)
+		options = append(options, wt.Name)
 	}
 	return options
 }
 
-// runInteractivePicker displays an interactive picker and returns the selected branch.
+// runInteractivePicker displays an interactive picker and returns the selected name.
 func runInteractivePicker(repoRoot string, mgr *worktree.Manager) (string, error) {
 	mainBranch, err := worktree.GetMainBranch(repoRoot)
 	if err != nil {

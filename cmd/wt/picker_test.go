@@ -23,8 +23,8 @@ func TestBuildPickerOptions(t *testing.T) {
 			name:       "main branch with worktrees",
 			mainBranch: "main",
 			worktrees: []worktree.WorktreeInfo{
-				{Branch: "feature-auth", Path: "/path/to/feature-auth"},
-				{Branch: "fix-bug", Path: "/path/to/fix-bug"},
+				{Name: "feature-auth", Path: "/path/to/feature-auth"},
+				{Name: "fix-bug", Path: "/path/to/fix-bug"},
 			},
 			want: []string{"main", "feature-auth", "fix-bug"},
 		},
@@ -32,7 +32,7 @@ func TestBuildPickerOptions(t *testing.T) {
 			name:       "master branch with worktrees",
 			mainBranch: "master",
 			worktrees: []worktree.WorktreeInfo{
-				{Branch: "develop", Path: "/path/to/develop"},
+				{Name: "develop", Path: "/path/to/develop"},
 			},
 			want: []string{"master", "develop"},
 		},

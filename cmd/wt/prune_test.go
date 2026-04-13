@@ -4,21 +4,84 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/niref/wt/internal/worktree"
 )
 
+// setupTestRepoWithRemote creates a local repo cloned from a bare remote.
+// Returns the local repo dir and the bare remote path.
+func setupTestRepoWithRemote(t *testing.T) (repoDir, bareRemote string) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	bareRemote = filepath.Join(tmpDir, "remote.git")
+	repoDir = filepath.Join(tmpDir, "local")
+
+	if err := os.MkdirAll(bareRemote, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "init", "--bare", "--initial-branch=main")
+	cmd.Dir = bareRemote
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare failed: %v\n%s", err, out)
+	}
+
+	cmd = exec.Command("git", "clone", bareRemote, repoDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git clone failed: %v\n%s", err, out)
+	}
+
+	cmds := [][]string{
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "commit", "--allow-empty", "-m", "initial"},
+		{"git", "push", "-u", "origin", "HEAD"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	return repoDir, bareRemote
+}
+
+// createWorktreeForBranch creates a git worktree at .claude/worktrees/<name> inside repoDir.
+// The name and branch are set to the same value.
+func createWorktreeForBranch(t *testing.T, repoDir, name string) string {
+	t.Helper()
+	wtPath := filepath.Join(repoDir, ".claude", "worktrees", name)
+	if err := os.MkdirAll(filepath.Dir(wtPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Use existing branch if it exists, otherwise create a new one
+	cmd := exec.Command("git", "worktree", "add", wtPath, name)
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		// Branch doesn't exist yet — create it
+		cmd = exec.Command("git", "worktree", "add", "-b", name, wtPath)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git worktree add failed: %v\n%s", err, out)
+		}
+		_ = out
+	}
+	return wtPath
+}
+
 func TestPrune_DryRun_ShowsCandidates(t *testing.T) {
-	repoDir, worktreeBase, bareRemote := setupTestRepoWithRemote(t)
+	repoDir, bareRemote := setupTestRepoWithRemote(t)
 
 	// Create a branch, push it, create worktree, then delete from remote
 	cmds := [][]string{
 		{"git", "checkout", "-b", "gone-branch"},
 		{"git", "commit", "--allow-empty", "-m", "gone commit"},
 		{"git", "push", "-u", "origin", "gone-branch"},
-		{"git", "checkout", "master"},
+		{"git", "checkout", "main"},
 	}
 	for _, args := range cmds {
 		cmd := exec.Command(args[0], args[1:]...)
@@ -29,11 +92,8 @@ func TestPrune_DryRun_ShowsCandidates(t *testing.T) {
 	}
 
 	// Create worktree for the branch
-	mgr := worktree.NewManager(repoDir, worktreeBase)
-	_, err := mgr.Create("gone-branch", "")
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	createWorktreeForBranch(t, repoDir, "gone-branch")
+	mgr := worktree.NewManager(repoDir)
 
 	// Delete branch from remote (simulating merge)
 	cmd := exec.Command("git", "push", "origin", "--delete", "gone-branch")
@@ -58,9 +118,7 @@ func TestPrune_DryRun_ShowsCandidates(t *testing.T) {
 		pruneNoFetch = false
 	}()
 
-	rootCmd.SetArgs([]string{"prune", "--dry-run",
-		"--worktree-base", worktreeBase,
-	})
+	rootCmd.SetArgs([]string{"prune", "--dry-run"})
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("prune --dry-run failed: %v\n%s", err, buf.String())
@@ -81,14 +139,14 @@ func TestPrune_DryRun_ShowsCandidates(t *testing.T) {
 }
 
 func TestPrune_NothingToPrune(t *testing.T) {
-	repoDir, worktreeBase, _ := setupTestRepoWithRemote(t)
+	repoDir, _ := setupTestRepoWithRemote(t)
 
 	// Create a branch that still exists on remote
 	cmds := [][]string{
 		{"git", "checkout", "-b", "active-branch"},
 		{"git", "commit", "--allow-empty", "-m", "active commit"},
 		{"git", "push", "-u", "origin", "active-branch"},
-		{"git", "checkout", "master"},
+		{"git", "checkout", "main"},
 	}
 	for _, args := range cmds {
 		cmd := exec.Command(args[0], args[1:]...)
@@ -99,11 +157,7 @@ func TestPrune_NothingToPrune(t *testing.T) {
 	}
 
 	// Create worktree
-	mgr := worktree.NewManager(repoDir, worktreeBase)
-	_, err := mgr.Create("active-branch", "")
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	createWorktreeForBranch(t, repoDir, "active-branch")
 
 	origDir, _ := os.Getwd()
 	os.Chdir(repoDir)
@@ -120,9 +174,7 @@ func TestPrune_NothingToPrune(t *testing.T) {
 		pruneNoFetch = false
 	}()
 
-	rootCmd.SetArgs([]string{"prune",
-		"--worktree-base", worktreeBase,
-	})
+	rootCmd.SetArgs([]string{"prune"})
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("prune failed: %v\n%s", err, buf.String())
@@ -135,18 +187,15 @@ func TestPrune_NothingToPrune(t *testing.T) {
 }
 
 func TestPrune_SkipsLocalOnlyBranches(t *testing.T) {
-	repoDir, worktreeBase, _ := setupTestRepoWithRemote(t)
+	repoDir, _ := setupTestRepoWithRemote(t)
 
 	origDir, _ := os.Getwd()
 	os.Chdir(repoDir)
 	defer os.Chdir(origDir)
 
 	// Create a local-only branch (never pushed, no tracking)
-	mgr := worktree.NewManager(repoDir, worktreeBase)
-	_, err := mgr.Create("local-only-branch", "")
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	createWorktreeForBranch(t, repoDir, "local-only-branch")
+	mgr := worktree.NewManager(repoDir)
 
 	buf := new(bytes.Buffer)
 	rootCmd.SetOut(buf)
@@ -159,9 +208,7 @@ func TestPrune_SkipsLocalOnlyBranches(t *testing.T) {
 		pruneNoFetch = false
 	}()
 
-	rootCmd.SetArgs([]string{"prune", "--dry-run",
-		"--worktree-base", worktreeBase,
-	})
+	rootCmd.SetArgs([]string{"prune", "--dry-run"})
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("prune failed: %v\n%s", err, buf.String())
@@ -180,14 +227,14 @@ func TestPrune_SkipsLocalOnlyBranches(t *testing.T) {
 }
 
 func TestPrune_RemovesGoneBranch(t *testing.T) {
-	repoDir, worktreeBase, _ := setupTestRepoWithRemote(t)
+	repoDir, _ := setupTestRepoWithRemote(t)
 
 	// Create a branch, push it, create worktree, then delete from remote
 	cmds := [][]string{
 		{"git", "checkout", "-b", "to-prune"},
 		{"git", "commit", "--allow-empty", "-m", "prune me"},
 		{"git", "push", "-u", "origin", "to-prune"},
-		{"git", "checkout", "master"},
+		{"git", "checkout", "main"},
 	}
 	for _, args := range cmds {
 		cmd := exec.Command(args[0], args[1:]...)
@@ -198,11 +245,8 @@ func TestPrune_RemovesGoneBranch(t *testing.T) {
 	}
 
 	// Create worktree
-	mgr := worktree.NewManager(repoDir, worktreeBase)
-	_, err := mgr.Create("to-prune", "")
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	createWorktreeForBranch(t, repoDir, "to-prune")
+	mgr := worktree.NewManager(repoDir)
 
 	// Delete branch from remote
 	cmd := exec.Command("git", "push", "origin", "--delete", "to-prune")
@@ -225,15 +269,10 @@ func TestPrune_RemovesGoneBranch(t *testing.T) {
 		pruneDryRun = false
 		pruneNoFetch = false
 		pruneForce = false
-		pruneSkipChanges = false
 	}()
 
-	// Use --force and --skip-changes to avoid prompts
-	rootCmd.SetArgs([]string{"prune",
-		"--worktree-base", worktreeBase,
-		"--force",
-		"--skip-changes",
-	})
+	// Use --force to avoid prompts on clean worktree (no uncommitted changes but remote is gone)
+	rootCmd.SetArgs([]string{"prune", "--force"})
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("prune failed: %v\n%s", err, buf.String())
@@ -241,7 +280,7 @@ func TestPrune_RemovesGoneBranch(t *testing.T) {
 
 	output := buf.String()
 	if !strings.Contains(output, "to-prune") {
-		t.Errorf("output should mention pruned branch, got: %s", output)
+		t.Errorf("output should mention pruned worktree, got: %s", output)
 	}
 	if !strings.Contains(output, "Pruned") {
 		t.Errorf("output should confirm pruning, got: %s", output)
@@ -259,7 +298,7 @@ func TestPrune_RemovesGoneBranch(t *testing.T) {
 }
 
 func TestPrune_MultipleWorktrees(t *testing.T) {
-	repoDir, worktreeBase, _ := setupTestRepoWithRemote(t)
+	repoDir, _ := setupTestRepoWithRemote(t)
 
 	// Create multiple branches
 	branches := []string{"prune-a", "prune-b", "keep-c"}
@@ -268,7 +307,7 @@ func TestPrune_MultipleWorktrees(t *testing.T) {
 			{"git", "checkout", "-b", branch},
 			{"git", "commit", "--allow-empty", "-m", branch + " commit"},
 			{"git", "push", "-u", "origin", branch},
-			{"git", "checkout", "master"},
+			{"git", "checkout", "main"},
 		}
 		for _, args := range cmds {
 			cmd := exec.Command(args[0], args[1:]...)
@@ -280,12 +319,9 @@ func TestPrune_MultipleWorktrees(t *testing.T) {
 	}
 
 	// Create worktrees for all
-	mgr := worktree.NewManager(repoDir, worktreeBase)
+	mgr := worktree.NewManager(repoDir)
 	for _, branch := range branches {
-		_, err := mgr.Create(branch, "")
-		if err != nil {
-			t.Fatalf("Create %s failed: %v", branch, err)
-		}
+		createWorktreeForBranch(t, repoDir, branch)
 	}
 
 	// Delete prune-a and prune-b from remote, keep keep-c
@@ -311,14 +347,9 @@ func TestPrune_MultipleWorktrees(t *testing.T) {
 		pruneDryRun = false
 		pruneNoFetch = false
 		pruneForce = false
-		pruneSkipChanges = false
 	}()
 
-	rootCmd.SetArgs([]string{"prune",
-		"--worktree-base", worktreeBase,
-		"--force",
-		"--skip-changes",
-	})
+	rootCmd.SetArgs([]string{"prune", "--force"})
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("prune failed: %v\n%s", err, buf.String())
@@ -349,14 +380,14 @@ func TestPrune_MultipleWorktrees(t *testing.T) {
 }
 
 func TestPrune_NoFetch_UsesStaleRefs(t *testing.T) {
-	repoDir, worktreeBase, bareRemote := setupTestRepoWithRemote(t)
+	repoDir, bareRemote := setupTestRepoWithRemote(t)
 
 	// Create a branch, push it, create worktree
 	cmds := [][]string{
 		{"git", "checkout", "-b", "stale-branch"},
 		{"git", "commit", "--allow-empty", "-m", "stale commit"},
 		{"git", "push", "-u", "origin", "stale-branch"},
-		{"git", "checkout", "master"},
+		{"git", "checkout", "main"},
 	}
 	for _, args := range cmds {
 		cmd := exec.Command(args[0], args[1:]...)
@@ -367,11 +398,8 @@ func TestPrune_NoFetch_UsesStaleRefs(t *testing.T) {
 	}
 
 	// Create worktree
-	mgr := worktree.NewManager(repoDir, worktreeBase)
-	_, err := mgr.Create("stale-branch", "")
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	createWorktreeForBranch(t, repoDir, "stale-branch")
+	mgr := worktree.NewManager(repoDir)
 
 	// Delete branch from remote using a separate clone (so local doesn't know)
 	tmpClone := t.TempDir()
@@ -399,13 +427,10 @@ func TestPrune_NoFetch_UsesStaleRefs(t *testing.T) {
 		pruneDryRun = false
 		pruneNoFetch = false
 		pruneForce = false
-		pruneSkipChanges = false
 	}()
 
 	// With --no-fetch, the local repo still thinks remote branch exists
-	rootCmd.SetArgs([]string{"prune", "--dry-run", "--no-fetch",
-		"--worktree-base", worktreeBase,
-	})
+	rootCmd.SetArgs([]string{"prune", "--dry-run", "--no-fetch"})
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("prune failed: %v\n%s", err, buf.String())
@@ -424,14 +449,14 @@ func TestPrune_NoFetch_UsesStaleRefs(t *testing.T) {
 }
 
 func TestPrune_PromptsForUncommittedChanges(t *testing.T) {
-	repoDir, worktreeBase, _ := setupTestRepoWithRemote(t)
+	repoDir, _ := setupTestRepoWithRemote(t)
 
 	// Create a branch, push it, create worktree, then delete from remote
 	cmds := [][]string{
 		{"git", "checkout", "-b", "dirty-branch"},
 		{"git", "commit", "--allow-empty", "-m", "dirty commit"},
 		{"git", "push", "-u", "origin", "dirty-branch"},
-		{"git", "checkout", "master"},
+		{"git", "checkout", "main"},
 	}
 	for _, args := range cmds {
 		cmd := exec.Command(args[0], args[1:]...)
@@ -442,11 +467,7 @@ func TestPrune_PromptsForUncommittedChanges(t *testing.T) {
 	}
 
 	// Create worktree
-	mgr := worktree.NewManager(repoDir, worktreeBase)
-	wtPath, err := mgr.Create("dirty-branch", "")
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	wtPath := createWorktreeForBranch(t, repoDir, "dirty-branch")
 
 	// Add uncommitted changes in the worktree
 	if err := os.WriteFile(wtPath+"/uncommitted.txt", []byte("uncommitted"), 0644); err != nil {
@@ -474,16 +495,12 @@ func TestPrune_PromptsForUncommittedChanges(t *testing.T) {
 		pruneDryRun = false
 		pruneNoFetch = false
 		pruneForce = false
-		pruneSkipChanges = false
 	}()
 
 	// Without --force, should prompt about uncommitted changes
 	// Since we can't provide stdin input in tests, the read will fail
 	// But we can verify the prompt message appears in stdout
-	rootCmd.SetArgs([]string{"prune",
-		"--worktree-base", worktreeBase,
-		"--skip-changes", // Skip config change detection to isolate the test
-	})
+	rootCmd.SetArgs([]string{"prune"})
 
 	// Execute will fail because stdin read fails, but check the output
 	_ = rootCmd.Execute()
@@ -494,6 +511,6 @@ func TestPrune_PromptsForUncommittedChanges(t *testing.T) {
 		t.Errorf("output should mention uncommitted changes, got: %s", output)
 	}
 	if !strings.Contains(output, "dirty-branch") {
-		t.Errorf("output should mention the branch name, got: %s", output)
+		t.Errorf("output should mention the worktree name, got: %s", output)
 	}
 }

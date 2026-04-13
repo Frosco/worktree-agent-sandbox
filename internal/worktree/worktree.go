@@ -1,53 +1,37 @@
 package worktree
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 )
 
-var ErrWorktreeExists = errors.New("worktree already exists")
 var ErrWorktreeNotFound = errors.New("worktree does not exist")
 var ErrBranchNotFound = errors.New("branch does not exist")
-var ErrBaseBranchNotFound = errors.New("base branch not found")
 
-// Manager handles worktree operations for a repository
+// Manager handles worktree operations for a repository.
 type Manager struct {
-	RepoRoot     string
-	RepoName     string
-	WorktreeBase string
+	RepoRoot string
 }
 
-// NewManager creates a Manager for the repo at the given root
-func NewManager(repoRoot, worktreeBase string) *Manager {
+// NewManager creates a Manager for the repo at the given root.
+func NewManager(repoRoot string) *Manager {
 	return &Manager{
-		RepoRoot:     repoRoot,
-		RepoName:     GetRepoName(repoRoot),
-		WorktreeBase: worktreeBase,
+		RepoRoot: repoRoot,
 	}
 }
 
-// WorktreePath returns the path where a branch's worktree would be located
-func (m *Manager) WorktreePath(branch string) string {
-	return filepath.Join(m.WorktreeBase, m.RepoName, branch)
+// WorktreePath returns the path where a worktree is located.
+func (m *Manager) WorktreePath(name string) string {
+	return filepath.Join(m.RepoRoot, ".claude", "worktrees", name)
 }
 
-// SnapshotPath returns the path where a branch's file snapshots are stored.
-// Snapshots live as a sibling to the worktrees directory:
-// WorktreeBase = ~/.local/share/wt/worktrees → snapshots at ~/.local/share/wt/snapshots/<repo>/<branch>
-func (m *Manager) SnapshotPath(branch string) string {
-	wtRoot := filepath.Dir(m.WorktreeBase) // ~/.local/share/wt
-	return filepath.Join(wtRoot, "snapshots", m.RepoName, branch)
-}
-
-// Exists checks if a worktree for the branch already exists
-func (m *Manager) Exists(branch string) bool {
-	wtPath := m.WorktreePath(branch)
+// Exists checks if a worktree with the given name exists.
+func (m *Manager) Exists(name string) bool {
+	wtPath := m.WorktreePath(name)
 	_, err := os.Stat(wtPath)
 	return err == nil
 }
@@ -124,92 +108,18 @@ func (m *Manager) DeleteBranch(branch string, force bool) error {
 	return nil
 }
 
-// FetchBranch fetches a specific branch from origin.
-// Returns an error if the branch doesn't exist on the remote.
-func (m *Manager) FetchBranch(branch string) error {
-	cmd := exec.Command("git", "fetch", "origin", branch)
-	cmd.Dir = m.RepoRoot
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git fetch origin %s: %w: %s", branch, err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-// Create creates a new worktree for the given branch.
-// If baseBranch is specified, creates a new branch based on it.
-// If baseBranch is empty:
-//   - If the branch exists locally, uses it directly.
-//   - If the branch exists only on origin, creates a local tracking branch.
-//   - If the branch doesn't exist anywhere, creates a new branch from HEAD.
-func (m *Manager) Create(branch, baseBranch string) (string, error) {
-	wtPath := m.WorktreePath(branch)
-
-	if m.Exists(branch) {
-		return "", ErrWorktreeExists
-	}
-
-	// Ensure parent directory exists
-	if err := os.MkdirAll(filepath.Dir(wtPath), 0755); err != nil {
-		return "", err
-	}
-
-	// If base branch specified, resolve it and create new branch based on it
-	if baseBranch != "" {
-		baseRef := baseBranch
-		if !m.BranchExists(baseBranch) {
-			// Try to fetch from origin
-			if err := m.FetchBranch(baseBranch); err != nil {
-				return "", ErrBaseBranchNotFound
-			}
-			if !m.RemoteBranchExists(baseBranch) {
-				return "", ErrBaseBranchNotFound
-			}
-			baseRef = "origin/" + baseBranch
-		}
-		cmd := exec.Command("git", "worktree", "add", "-b", branch, wtPath, baseRef)
-		cmd.Dir = m.RepoRoot
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return "", fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
-		}
-		return wtPath, nil
-	}
-
-	// No base branch - use existing behavior
-	localExists := m.BranchExists(branch)
-	remoteExists := m.RemoteBranchExists(branch)
-
-	var cmd *exec.Cmd
-	switch {
-	case localExists:
-		// Local branch exists - use it directly
-		cmd = exec.Command("git", "worktree", "add", wtPath, branch)
-	case remoteExists:
-		// Remote branch exists - create local tracking branch
-		cmd = exec.Command("git", "worktree", "add", "-b", branch, wtPath, "origin/"+branch)
-	default:
-		// No branch exists - create new branch
-		cmd = exec.Command("git", "worktree", "add", "-b", branch, wtPath)
-	}
-	cmd.Dir = m.RepoRoot
-
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-
-	return wtPath, nil
-}
-
-// WorktreeInfo holds information about a worktree
+// WorktreeInfo holds information about a worktree.
 type WorktreeInfo struct {
-	Path   string
-	Branch string
+	Name   string // Directory name (e.g., "feature-auth")
+	Branch string // Git branch (e.g., "worktree-feature-auth")
+	Path   string // Full filesystem path
 }
 
-// List returns all worktrees managed by wt for this repo
+// List returns all worktrees in .claude/worktrees/ for this repo.
 func (m *Manager) List() ([]WorktreeInfo, error) {
-	repoWorktreeDir := filepath.Join(m.WorktreeBase, m.RepoName)
+	wtDir := filepath.Join(m.RepoRoot, ".claude", "worktrees")
 
-	entries, err := os.ReadDir(repoWorktreeDir)
+	entries, err := os.ReadDir(wtDir)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -219,26 +129,45 @@ func (m *Manager) List() ([]WorktreeInfo, error) {
 
 	var worktrees []WorktreeInfo
 	for _, entry := range entries {
-		if entry.IsDir() {
-			wtPath := filepath.Join(repoWorktreeDir, entry.Name())
-			worktrees = append(worktrees, WorktreeInfo{
-				Path:   wtPath,
-				Branch: entry.Name(),
-			})
+		if !entry.IsDir() {
+			continue
 		}
+		name := entry.Name()
+		wtPath := filepath.Join(wtDir, name)
+		branch := branchForWorktree(wtPath)
+		worktrees = append(worktrees, WorktreeInfo{
+			Name:   name,
+			Branch: branch,
+			Path:   wtPath,
+		})
 	}
 
 	return worktrees, nil
 }
 
-// Remove removes a worktree by branch name.
-// If force is true, removes even if worktree has uncommitted changes.
-func (m *Manager) Remove(branch string, force bool) error {
-	wtPath := m.WorktreePath(branch)
+// branchForWorktree reads the branch checked out in a worktree.
+func branchForWorktree(wtPath string) string {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = wtPath
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
 
-	if !m.Exists(branch) {
+// Remove removes a worktree by name.
+// If force is true, removes even if worktree has uncommitted changes.
+// Also deletes the associated local branch.
+func (m *Manager) Remove(name string, force bool) error {
+	wtPath := m.WorktreePath(name)
+
+	if !m.Exists(name) {
 		return ErrWorktreeNotFound
 	}
+
+	// Read the branch name before removing the worktree
+	branch := branchForWorktree(wtPath)
 
 	args := []string{"worktree", "remove"}
 	if force {
@@ -252,264 +181,12 @@ func (m *Manager) Remove(branch string, force bool) error {
 		return fmt.Errorf("git worktree remove: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 
-	return nil
-}
-
-// CopyFiles copies files or directories from repo root to worktree.
-// Skips entries that don't exist in the source.
-// Returns list of entries that were copied.
-func (m *Manager) CopyFiles(wtPath string, files []string) ([]string, error) {
-	var copied []string
-
-	for _, file := range files {
-		srcPath := filepath.Join(m.RepoRoot, file)
-		dstPath := filepath.Join(wtPath, file)
-
-		srcInfo, err := os.Stat(srcPath)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return copied, err
-		}
-
-		if srcInfo.IsDir() {
-			if err := copyDir(srcPath, dstPath); err != nil {
-				return copied, err
-			}
-		} else {
-			// Ensure destination directory exists
-			if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
-				return copied, err
-			}
-			if err := copyFile(srcPath, dstPath); err != nil {
-				return copied, err
-			}
-		}
-
-		copied = append(copied, file)
-	}
-
-	return copied, nil
-}
-
-// SaveSnapshot saves a copy of config files from the repo root to the snapshot directory.
-// These snapshots serve as the base version for three-way merge when merging back.
-// Skips entries that don't exist in the source.
-func (m *Manager) SaveSnapshot(branch string, files []string) error {
-	snapshotDir := m.SnapshotPath(branch)
-
-	for _, file := range files {
-		srcPath := filepath.Join(m.RepoRoot, file)
-
-		srcInfo, err := os.Stat(srcPath)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-
-		dstPath := filepath.Join(snapshotDir, file)
-
-		if srcInfo.IsDir() {
-			if err := copyDir(srcPath, dstPath); err != nil {
-				return err
-			}
-		} else {
-			if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
-				return err
-			}
-			if err := copyFile(srcPath, dstPath); err != nil {
-				return err
-			}
-		}
+	// Delete the local branch (force because remote may be gone)
+	if branch != "" {
+		_ = m.DeleteBranch(branch, true)
 	}
 
 	return nil
-}
-
-// RemoveSnapshot deletes the snapshot directory for a branch.
-// Returns nil if the snapshot directory doesn't exist.
-func (m *Manager) RemoveSnapshot(branch string) error {
-	snapshotDir := m.SnapshotPath(branch)
-	err := os.RemoveAll(snapshotDir)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return nil
-}
-
-func copyFile(src, dst string) error {
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-
-	srcInfo, err := srcFile.Stat()
-	if err != nil {
-		return err
-	}
-
-	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-
-	if _, err = io.Copy(dstFile, srcFile); err != nil {
-		return err
-	}
-	return dstFile.Close()
-}
-
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		relPath, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		dstPath := filepath.Join(dst, relPath)
-
-		if info.IsDir() {
-			return os.MkdirAll(dstPath, info.Mode())
-		}
-
-		return copyFile(path, dstPath)
-	})
-}
-
-// FileChange represents a changed config file
-type FileChange struct {
-	File     string
-	Conflict bool // true if source also changed
-}
-
-// MergeStatus indicates the result of a merge-back operation
-type MergeStatus int
-
-const (
-	MergeStatusCopied   MergeStatus = iota // Plain copy (no snapshot or mergiraf unavailable)
-	MergeStatusMerged                      // Successful three-way merge
-	MergeStatusConflict                    // Three-way merge had conflicts, main version kept
-	MergeStatusError                       // I/O or other error occurred
-)
-
-// MergeResult describes the outcome of a merge-back operation
-type MergeResult struct {
-	Status MergeStatus
-	Err    error
-}
-
-// DetectChanges checks if config files or directories in worktree differ from source.
-// Also detects conflicts where source changed too.
-func (m *Manager) DetectChanges(wtPath string, files []string) ([]FileChange, error) {
-	var changes []FileChange
-
-	for _, file := range files {
-		srcPath := filepath.Join(m.RepoRoot, file)
-		dstPath := filepath.Join(wtPath, file)
-
-		dstInfo, err := os.Stat(dstPath)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		if dstInfo.IsDir() {
-			// For directories, walk and compare each file
-			dirChanges, err := m.detectDirChanges(srcPath, dstPath, file)
-			if err != nil {
-				return nil, err
-			}
-			changes = append(changes, dirChanges...)
-		} else {
-			// Original file handling
-			fileChange, hasChange, err := m.detectFileChange(srcPath, dstPath, file)
-			if err != nil {
-				return nil, err
-			}
-			if hasChange {
-				changes = append(changes, fileChange)
-			}
-		}
-	}
-
-	return changes, nil
-}
-
-func (m *Manager) detectFileChange(srcPath, dstPath, file string) (FileChange, bool, error) {
-	dstContent, err := os.ReadFile(dstPath)
-	if err != nil {
-		return FileChange{}, false, err
-	}
-
-	srcContent, err := os.ReadFile(srcPath)
-	if os.IsNotExist(err) {
-		// File exists in worktree but not source - that's a change
-		return FileChange{File: file, Conflict: false}, true, nil
-	}
-	if err != nil {
-		return FileChange{}, false, err
-	}
-
-	// Compare contents
-	if !bytes.Equal(srcContent, dstContent) {
-		change := FileChange{File: file, Conflict: false}
-
-		// Simple conflict detection by comparing mod times
-		srcInfo, _ := os.Stat(srcPath)
-		dstInfo, _ := os.Stat(dstPath)
-		if srcInfo != nil && dstInfo != nil {
-			if srcInfo.ModTime().After(dstInfo.ModTime()) {
-				change.Conflict = true
-			}
-		}
-
-		return change, true, nil
-	}
-
-	return FileChange{}, false, nil
-}
-
-func (m *Manager) detectDirChanges(srcDir, dstDir, baseFile string) ([]FileChange, error) {
-	var changes []FileChange
-
-	err := filepath.Walk(dstDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-
-		relPath, err := filepath.Rel(dstDir, path)
-		if err != nil {
-			return err
-		}
-
-		srcPath := filepath.Join(srcDir, relPath)
-		file := filepath.Join(baseFile, relPath)
-
-		change, hasChange, err := m.detectFileChange(srcPath, path, file)
-		if err != nil {
-			return err
-		}
-		if hasChange {
-			changes = append(changes, change)
-		}
-
-		return nil
-	})
-
-	return changes, err
 }
 
 // FetchPrune fetches from origin and prunes stale remote-tracking refs.
@@ -520,65 +197,4 @@ func (m *Manager) FetchPrune() error {
 		return fmt.Errorf("git fetch --prune origin: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
-}
-
-// MergeBack merges a file or directory from worktree back to the source repo.
-// When a snapshot exists and mergiraf is available, performs a three-way merge.
-// Otherwise falls back to a plain copy.
-func (m *Manager) MergeBack(wtPath, file, branch string) MergeResult {
-	srcPath := filepath.Join(wtPath, file)
-	dstPath := filepath.Join(m.RepoRoot, file)
-
-	srcInfo, err := os.Stat(srcPath)
-	if err != nil {
-		return MergeResult{Status: MergeStatusError, Err: err}
-	}
-
-	// Directories always use copy
-	if srcInfo.IsDir() {
-		if err := copyDir(srcPath, dstPath); err != nil {
-			return MergeResult{Status: MergeStatusError, Err: err}
-		}
-		return MergeResult{Status: MergeStatusCopied}
-	}
-
-	// Try three-way merge if snapshot exists and mergiraf is available
-	snapshotFile := filepath.Join(m.SnapshotPath(branch), file)
-	if _, err := os.Stat(snapshotFile); err == nil {
-		if mergirafPath, err := exec.LookPath("mergiraf"); err == nil {
-			return m.mergeThreeWay(mergirafPath, snapshotFile, dstPath, srcPath)
-		}
-	}
-
-	// Fallback: plain copy
-	if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
-		return MergeResult{Status: MergeStatusError, Err: err}
-	}
-	if err := copyFile(srcPath, dstPath); err != nil {
-		return MergeResult{Status: MergeStatusError, Err: err}
-	}
-	return MergeResult{Status: MergeStatusCopied}
-}
-
-func (m *Manager) mergeThreeWay(mergirafPath, basePath, leftPath, rightPath string) MergeResult {
-	tmpFile, err := os.CreateTemp("", "wt-merge-*")
-	if err != nil {
-		return MergeResult{Status: MergeStatusError, Err: fmt.Errorf("creating temp file: %w", err)}
-	}
-	tmpPath := tmpFile.Name()
-	tmpFile.Close()
-	defer os.Remove(tmpPath)
-
-	cmd := exec.Command(mergirafPath, "merge", basePath, leftPath, rightPath, "-o", tmpPath)
-	if err := cmd.Run(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-			return MergeResult{Status: MergeStatusConflict}
-		}
-		return MergeResult{Status: MergeStatusError, Err: fmt.Errorf("mergiraf merge: %w", err)}
-	}
-
-	if err := copyFile(tmpPath, leftPath); err != nil {
-		return MergeResult{Status: MergeStatusError, Err: fmt.Errorf("writing merge result: %w", err)}
-	}
-	return MergeResult{Status: MergeStatusMerged}
 }

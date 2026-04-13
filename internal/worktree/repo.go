@@ -34,11 +34,6 @@ func FindRepoRoot(dir string) (string, error) {
 	return repoRoot, nil
 }
 
-// GetRepoName extracts the repository name from its path.
-func GetRepoName(repoRoot string) string {
-	return filepath.Base(repoRoot)
-}
-
 // GetMainBranch returns the branch currently checked out in the main repo.
 func GetMainBranch(repoRoot string) (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")

@@ -18,9 +18,9 @@ func TestGenerateBashInit(t *testing.T) {
 		t.Error("script should call wt-bin")
 	}
 
-	// Should handle new and switch with cd
-	if !strings.Contains(script, "new|switch") {
-		t.Error("script should handle new and switch commands")
+	// Should handle switch with cd
+	if !strings.Contains(script, "switch)") {
+		t.Error("script should handle switch command")
 	}
 
 	// Should use cd

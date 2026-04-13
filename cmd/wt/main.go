@@ -9,7 +9,7 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "wt-bin",
-	Short: "Git worktree manager with Claude Code sandbox support",
+	Short: "Git worktree navigator and cleaner",
 }
 
 func main() {
