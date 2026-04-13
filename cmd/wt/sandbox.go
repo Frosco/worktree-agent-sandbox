@@ -74,8 +74,6 @@ var sandboxCmd = &cobra.Command{
 		miseStateDir := filepath.Join(home, ".local", "state", "mise")
 		miseCacheDir := filepath.Join(home, ".cache", "mise")
 
-		allMounts := sandboxMounts
-
 		// Build/check image
 		imageName := sandboxImage
 		if imageName == "" {
@@ -101,7 +99,7 @@ var sandboxCmd = &cobra.Command{
 			MiseDataDir:      miseDataDir,
 			MiseStateDir:     miseStateDir,
 			MiseCacheDir:     miseCacheDir,
-			ExtraMounts:      allMounts,
+			ExtraMounts:      sandboxMounts,
 			ContainerImage:   imageName,
 			RunMiseInstall:   !sandboxNoMise,
 			StartClaude:      !sandboxNoClaude,
