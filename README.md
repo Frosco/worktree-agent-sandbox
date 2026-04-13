@@ -1,15 +1,10 @@
-# wt - Git Worktree Manager with Claude Code Sandbox
+# wt - Git Worktree Navigator and Cleaner
 
-A CLI tool to manage git worktrees with automatic config file copying and Podman container support for running Claude Code in isolation.
+A companion CLI for [Claude Code's worktree support](https://code.claude.com/docs/en/common-workflows.md#run-parallel-claude-code-sessions-with-git-worktrees). Provides interactive switching between worktrees and batch cleanup of stale ones.
 
-## Features
+## Why
 
-- Create and switch between git worktrees with a single command
-- Automatically copy gitignored config files (like `CLAUDE.md`, `mise.local.toml`) to new worktrees
-- Detect changes in config files when removing worktrees and offer to merge them back (three-way merge via [mergiraf](https://mergiraf.org) when available, falls back to copy)
-- Prune stale worktrees whose branches were deleted from remote
-- Run Claude Code in a sandboxed Podman container with `--dangerously-skip-permissions`
-- Shell integration for seamless `cd` into worktrees
+Claude Code creates worktrees with `claude --worktree <name>` and handles config file copying (`.worktreeinclude`) and memory sharing natively. What it doesn't provide is a way to quickly navigate between worktrees from your shell or batch-clean old ones. That's what `wt` does.
 
 ## Installation
 
@@ -28,113 +23,63 @@ echo 'eval "$(wt-bin shell-init zsh)"' >> ~/.zshrc
 
 ## Usage
 
-### Create a new worktree
-
-```bash
-wt new feature-branch
-# Creates worktree at ~/.local/share/wt/worktrees/<repo>/feature-branch
-# Copies configured files from main worktree
-# cd's into the new worktree (via shell function)
-
-wt new feature-branch -b develop
-# Creates feature-branch based on develop instead of HEAD
-# Fetches from origin if develop isn't available locally
-```
-
 ### Switch to a worktree
 
 ```bash
-wt switch feature-branch
-# If worktree exists: cd into it
-# If branch exists but no worktree: create worktree, then cd into it
-# If branch doesn't exist: error (use 'wt new' to create new branches)
+wt switch feature-auth
+# cd into .claude/worktrees/feature-auth/
 
 wt switch
-# No argument: shows interactive picker to select from available worktrees
+# No argument: interactive picker to select from available worktrees
 ```
 
 ### List worktrees
 
 ```bash
 wt list
-# Shows all worktrees for the current repo
-```
-
-### Remove a worktree
-
-```bash
-wt remove feature-branch
-# Detects if config files were modified
-# Offers to merge changes back to main worktree
-# Use --force to skip change detection
+# Shows all worktrees under .claude/worktrees/ with name, branch, and path
 ```
 
 ### Prune stale worktrees
 
 ```bash
 wt prune
-# Removes worktrees whose branches were deleted from remote (merged or manually deleted)
+# Removes worktrees whose branches were deleted from remote
 # Only considers branches with upstream tracking - local-only branches are never pruned
-# Prompts for worktrees with uncommitted changes
+# Prompts before removing worktrees with uncommitted changes or unpushed commits
+# Force-deletes both worktree and branch after confirmation
 
 wt prune --dry-run
-# Preview what would be pruned without removing anything
+# Preview what would be pruned
 
-wt prune --force --skip-changes
-# Skip all prompts (uncommitted changes and config file detection)
+wt prune --force
+# Skip prompts for uncommitted changes
 ```
 
-### Run in sandbox
+### Run in sandbox (Podman)
 
 ```bash
-wt sandbox feature-branch
-# Creates/switches to worktree
+wt sandbox feature-auth
+# Requires existing worktree (use 'claude --worktree feature-auth' to create one)
 # Starts Podman container with worktree mounted
 # Runs mise install && claude --dangerously-skip-permissions
 
-# Options:
 wt sandbox --no-claude    # Just get a shell
 wt sandbox --no-mise      # Skip mise install
 wt sandbox -m ~/other-repo  # Mount additional paths
 ```
 
-## Configuration
+## Per-repo setup
 
-### Global config: `~/.config/wt/config.toml`
-
-```toml
-# Files and directories to copy to new worktrees
-copy_files = ["CLAUDE.md", ".envrc", "mise.local.toml", ".ai"]
-
-# Additional paths to mount in sandbox
-extra_mounts = ["~/shared-libs", "~/data:ro"]
-```
-
-### Per-repo config: `.wt.toml` in repo root
-
-```toml
-# Repo-specific files to copy (merged with global)
-copy_files = [".env.local"]
-
-# Repo-specific mounts
-extra_mounts = ["~/work/common-deps"]
-```
-
-## Directory Structure
-
-Worktrees are stored in XDG-compliant locations:
+For repos where `CLAUDE.md` or other gitignored files should be copied to worktrees, add a `.worktreeinclude` file to the repo root:
 
 ```
-~/.local/share/wt/
-├── worktrees/
-│   └── <repo-name>/
-│       ├── feature-a/
-│       ├── feature-b/
-│       └── bugfix-123/
-└── snapshots/
-    └── <repo-name>/
-        └── feature-a/       # merge base for three-way merge
+CLAUDE.md
+.envrc
+mise.local.toml
 ```
+
+This is a Claude Code feature — files matching these patterns that are also gitignored get copied when `claude --worktree` creates a worktree.
 
 ## Development
 
@@ -154,10 +99,9 @@ go install golang.org/x/tools/cmd/goimports@latest
 
 ## Requirements
 
-- Go 1.21+
+- Go 1.24+
 - Git
 - Podman (for sandbox feature)
-- [mergiraf](https://mergiraf.org) (optional, for three-way merge of config files)
 
 ## License
 
