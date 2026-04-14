@@ -53,7 +53,29 @@ If no name is specified, displays an interactive picker to select from available
 		}
 
 		if !mgr.Exists(name) {
-			return fmt.Errorf("worktree %q does not exist (use 'claude --worktree %s' to create it)", name, name)
+			// Only attempt remote creation for explicit name arguments, not interactive picker
+			if len(args) == 0 {
+				return fmt.Errorf("worktree %q does not exist", name)
+			}
+
+			// Fetch and check if remote branch exists
+			if err := mgr.FetchPrune(); err != nil {
+				return fmt.Errorf("fetching from origin: %w", err)
+			}
+
+			if !mgr.RemoteBranchExists(name) {
+				return fmt.Errorf("no worktree or remote branch %q found", name)
+			}
+
+			// Create worktree from remote branch
+			if err := mgr.Create(name, "origin/"+name); err != nil {
+				return err
+			}
+
+			// Copy .worktreeinclude files
+			if err := mgr.CopyWorktreeInclude(name); err != nil {
+				return fmt.Errorf("copying .worktreeinclude files: %w", err)
+			}
 		}
 
 		wtPath := mgr.WorktreePath(name)
