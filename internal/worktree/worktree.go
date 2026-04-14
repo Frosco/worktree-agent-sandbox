@@ -247,7 +247,10 @@ func (m *Manager) CopyWorktreeInclude(name string) error {
 			return fmt.Errorf("copying %s to worktree: %w", line, err)
 		}
 	}
-	return scanner.Err()
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("scanning .worktreeinclude: %w", err)
+	}
+	return nil
 }
 
 // copyPath copies a file or directory from src to dst, creating parent directories as needed.
