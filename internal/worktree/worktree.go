@@ -210,7 +210,7 @@ func (m *Manager) Create(name, remoteBranch string) error {
 	cmd.Dir = m.RepoRoot
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("creating worktree %q: %s: %w", name, out, err)
+		return fmt.Errorf("creating worktree %q: %w: %s", name, err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
@@ -285,10 +285,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
 
-	_, err = io.Copy(out, in)
-	return err
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
 
 // copyDir recursively copies a directory tree.
