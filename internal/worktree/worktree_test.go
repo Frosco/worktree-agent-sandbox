@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -643,5 +644,77 @@ func TestRemove_CleanWorktree(t *testing.T) {
 	// Verify branch is deleted
 	if mgr.BranchExists("clean-remove") {
 		t.Error("branch should be deleted after Remove")
+	}
+}
+
+func TestCreate(t *testing.T) {
+	mainRepo, _ := setupRepoWithRemote(t)
+
+	// Push a branch to the remote that doesn't exist locally
+	cmd := exec.Command("git", "checkout", "-b", "feature-review")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checkout: %v\n%s", err, out)
+	}
+
+	if err := os.WriteFile(filepath.Join(mainRepo, "feature.txt"), []byte("feature content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, args := range [][]string{
+		{"add", "feature.txt"},
+		{"commit", "-m", "add feature"},
+		{"push", "origin", "feature-review"},
+		{"checkout", "main"},
+		{"branch", "-D", "feature-review"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = mainRepo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	mgr := NewManager(mainRepo)
+	err := mgr.Create("feature-review", "origin/feature-review")
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	// Verify worktree directory exists
+	wtPath := mgr.WorktreePath("feature-review")
+	if _, err := os.Stat(wtPath); os.IsNotExist(err) {
+		t.Fatalf("worktree directory not created at %s", wtPath)
+	}
+
+	// Verify the local branch is checked out
+	cmd = exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = wtPath
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("rev-parse: %v\n%s", err, out)
+	}
+	if branch := strings.TrimSpace(string(out)); branch != "feature-review" {
+		t.Errorf("expected branch feature-review, got %q", branch)
+	}
+
+	// Verify the file from the remote branch is present
+	content, err := os.ReadFile(filepath.Join(wtPath, "feature.txt"))
+	if err != nil {
+		t.Fatalf("feature.txt not found: %v", err)
+	}
+	if string(content) != "feature content" {
+		t.Errorf("unexpected content: %q", string(content))
+	}
+}
+
+func TestCreate_BranchAlreadyExists(t *testing.T) {
+	mainRepo, _ := setupRepoWithRemote(t)
+
+	// "main" branch already exists locally — Create should fail
+	mgr := NewManager(mainRepo)
+	err := mgr.Create("main", "origin/main")
+	if err == nil {
+		t.Fatal("expected error when branch already exists locally")
 	}
 }

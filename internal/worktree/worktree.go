@@ -198,3 +198,16 @@ func (m *Manager) FetchPrune() error {
 	}
 	return nil
 }
+
+// Create creates a new worktree at .claude/worktrees/<name>/ from a remote branch.
+// The local branch is created with the given name, tracking the remote branch.
+func (m *Manager) Create(name, remoteBranch string) error {
+	wtPath := m.WorktreePath(name)
+	cmd := exec.Command("git", "worktree", "add", "-b", name, wtPath, remoteBranch)
+	cmd.Dir = m.RepoRoot
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("creating worktree %q: %s: %w", name, out, err)
+	}
+	return nil
+}
