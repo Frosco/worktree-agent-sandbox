@@ -1,8 +1,11 @@
 package worktree
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -210,4 +213,95 @@ func (m *Manager) Create(name, remoteBranch string) error {
 		return fmt.Errorf("creating worktree %q: %s: %w", name, out, err)
 	}
 	return nil
+}
+
+// CopyWorktreeInclude copies files listed in .worktreeinclude from the repo root
+// to the worktree. If .worktreeinclude does not exist, this is a no-op.
+// Entries that don't exist in the repo root are skipped silently.
+func (m *Manager) CopyWorktreeInclude(name string) error {
+	includeFile := filepath.Join(m.RepoRoot, ".worktreeinclude")
+	f, err := os.Open(includeFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("reading .worktreeinclude: %w", err)
+	}
+	defer f.Close()
+
+	wtPath := m.WorktreePath(name)
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		src := filepath.Join(m.RepoRoot, line)
+		dst := filepath.Join(wtPath, line)
+
+		if err := copyPath(src, dst); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("copying %s to worktree: %w", line, err)
+		}
+	}
+	return scanner.Err()
+}
+
+// copyPath copies a file or directory from src to dst, creating parent directories as needed.
+func copyPath(src, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return copyDir(src, dst)
+	}
+	return copyFile(src, dst)
+}
+
+// copyFile copies a single file, preserving permissions.
+func copyFile(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	info, err := in.Stat()
+	if err != nil {
+		return err
+	}
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
+}
+
+// copyDir recursively copies a directory tree.
+func copyDir(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		return copyFile(path, target)
+	})
 }

@@ -718,3 +718,168 @@ func TestCreate_BranchAlreadyExists(t *testing.T) {
 		t.Fatal("expected error when branch already exists locally")
 	}
 }
+
+func TestCopyWorktreeInclude(t *testing.T) {
+	mainRepo, _ := setupRepoWithRemote(t)
+
+	// Push a branch and create a worktree from it
+	cmd := exec.Command("git", "checkout", "-b", "wti-test")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checkout: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "commit", "--allow-empty", "-m", "empty")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("commit: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "push", "origin", "wti-test")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("push: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "checkout", "main")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checkout main: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "branch", "-D", "wti-test")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("branch -D: %v\n%s", err, out)
+	}
+
+	mgr := NewManager(mainRepo)
+	if err := mgr.Create("wti-test", "origin/wti-test"); err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	// Create .worktreeinclude listing two files
+	includeContent := "# config files\nCLAUDE.md\n\nscripts/setup.sh\n"
+	if err := os.WriteFile(filepath.Join(mainRepo, ".worktreeinclude"), []byte(includeContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create the source files in repo root
+	if err := os.WriteFile(filepath.Join(mainRepo, "CLAUDE.md"), []byte("instructions"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(mainRepo, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mainRepo, "scripts", "setup.sh"), []byte("#!/bin/bash"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := mgr.CopyWorktreeInclude("wti-test")
+	if err != nil {
+		t.Fatalf("CopyWorktreeInclude() error: %v", err)
+	}
+
+	wtPath := mgr.WorktreePath("wti-test")
+
+	// Verify CLAUDE.md was copied
+	content, err := os.ReadFile(filepath.Join(wtPath, "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("CLAUDE.md not copied: %v", err)
+	}
+	if string(content) != "instructions" {
+		t.Errorf("CLAUDE.md content = %q, want %q", string(content), "instructions")
+	}
+
+	// Verify scripts/setup.sh was copied (with subdirectory)
+	content, err = os.ReadFile(filepath.Join(wtPath, "scripts", "setup.sh"))
+	if err != nil {
+		t.Fatalf("scripts/setup.sh not copied: %v", err)
+	}
+	if string(content) != "#!/bin/bash" {
+		t.Errorf("setup.sh content = %q, want %q", string(content), "#!/bin/bash")
+	}
+}
+
+func TestCopyWorktreeInclude_NoFile(t *testing.T) {
+	mainRepo, _ := setupRepoWithRemote(t)
+
+	// Create a worktree without .worktreeinclude — should be no-op
+	cmd := exec.Command("git", "checkout", "-b", "no-include")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checkout: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "commit", "--allow-empty", "-m", "empty")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("commit: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "push", "origin", "no-include")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("push: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "checkout", "main")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checkout main: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "branch", "-D", "no-include")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("branch -D: %v\n%s", err, out)
+	}
+
+	mgr := NewManager(mainRepo)
+	if err := mgr.Create("no-include", "origin/no-include"); err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	err := mgr.CopyWorktreeInclude("no-include")
+	if err != nil {
+		t.Fatalf("CopyWorktreeInclude() should be no-op without .worktreeinclude, got: %v", err)
+	}
+}
+
+func TestCopyWorktreeInclude_MissingSource(t *testing.T) {
+	mainRepo, _ := setupRepoWithRemote(t)
+
+	cmd := exec.Command("git", "checkout", "-b", "missing-src")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checkout: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "commit", "--allow-empty", "-m", "empty")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("commit: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "push", "origin", "missing-src")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("push: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "checkout", "main")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checkout main: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "branch", "-D", "missing-src")
+	cmd.Dir = mainRepo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("branch -D: %v\n%s", err, out)
+	}
+
+	mgr := NewManager(mainRepo)
+	if err := mgr.Create("missing-src", "origin/missing-src"); err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	// .worktreeinclude references a file that doesn't exist in repo root
+	includeContent := "nonexistent-file.txt\n"
+	if err := os.WriteFile(filepath.Join(mainRepo, ".worktreeinclude"), []byte(includeContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := mgr.CopyWorktreeInclude("missing-src")
+	if err != nil {
+		t.Fatalf("CopyWorktreeInclude() should skip missing files silently, got: %v", err)
+	}
+}
